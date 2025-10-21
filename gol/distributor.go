@@ -15,6 +15,7 @@ type distributorChannels struct {
 	ioFilename chan<- string
 	ioOutput   chan<- uint8
 	ioInput    <-chan uint8
+	keyPresses <-chan rune
 }
 
 func incrementGol(world, result *[][]byte, p *Params, row int) {
@@ -89,23 +90,27 @@ func worker(world, result *[][]byte, p *Params, jobs <-chan int, wg *sync.WaitGr
 		wg.Done()
 	}
 }
+func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
+	(*c).ioCommand <- ioOutput
+	filename := strconv.Itoa((*p).ImageWidth) + "x" + strconv.Itoa((*p).ImageHeight) + "x" + strconv.Itoa(*turns)
+	(*c).ioFilename <- filename
 
-func startTicker(ticker *time.Ticker, events chan<- Event, tickerStop <-chan bool, world *[][]byte, p *Params, turns *int) {
-	for {
-		select {
-		case <-ticker.C:
-			events <- AliveCellsCount{CellsCount: len(getAliveCells(world, p)), CompletedTurns: *turns}
-		case <-tickerStop:
-			return
+	for y := 0; y < (*p).ImageHeight; y++ {
+		for x := 0; x < (*p).ImageWidth; x++ {
+			(*c).ioOutput <- (*world)[x][y]
 		}
 	}
+
+	(*c).ioCommand <- ioCheckIdle
+	<-(*c).ioIdle
+	(*c).events <- ImageOutputComplete{Filename: filename, CompletedTurns: *turns}
+
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
 	c.ioCommand <- ioInput // give us the world in bytes
 	c.ioFilename <- strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight)
-
 	world := createWorld(p.ImageWidth, p.ImageHeight)
 	result := createWorld(p.ImageWidth, p.ImageHeight)
 	for y := 0; y < p.ImageHeight; y++ {
@@ -116,8 +121,6 @@ func distributor(p Params, c distributorChannels) {
 
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
-
-	numberOfTurns := p.Turns
 
 	turn := 0
 	c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
@@ -130,56 +133,73 @@ func distributor(p Params, c distributorChannels) {
 		go worker(&world, &result, &p, jobs, &wg)
 	}
 
-	// create a ticker to track time
+	//create a ticker to track time
 	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	tickerStop := make(chan bool)
+	//tickerStop := make(chan bool)
 
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				c.events <- AliveCellsCount{CellsCount: len(getAliveCells(&world, &p)), CompletedTurns: turn}
-			case <-tickerStop:
-				return
+	for i := 1; i <= p.Turns; i++ {
+		select {
+		case <-ticker.C:
+			c.events <- AliveCellsCount{CellsCount: len(getAliveCells(&world, &p)), CompletedTurns: turn - 1}
+		case kp := <-c.keyPresses:
+			switch kp {
+			case 's':
+				{
+					pgmImage(&p, &world, &c, &turn)
+				}
+			case 'q':
+				{
+					c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&world, &p)}
+					pgmImage(&p, &world, &c, &turn)
+					c.events <- StateChange{CompletedTurns: turn, NewState: Quitting}
+					return
+				}
+			case 'p':
+				{
+					c.events <- StateChange{CompletedTurns: turn, NewState: Paused}
+					for {
+						kp := <-c.keyPresses
+						if kp == 'p' {
+							break
+						}
+						if kp == 's' {
+							pgmImage(&p, &world, &c, &turn)
+						}
+						if kp == 'q' {
+							c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&world, &p)}
+							pgmImage(&p, &world, &c, &turn)
+							c.events <- StateChange{CompletedTurns: turn, NewState: Quitting}
+							return
+						}
+					}
+					c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
+				}
 			}
-		}
-	}()
+		default:
+			for j := 0; j < p.ImageHeight; j++ {
+				wg.Add(1)
+				jobs <- j
+			}
 
-	for i := 1; i <= numberOfTurns; i++ {
-		for j := 0; j < p.ImageHeight; j++ {
-			wg.Add(1)
-			jobs <- j
-		}
-		wg.Wait()
-		for y := 0; y < p.ImageHeight; y++ {
-			for x := 0; x < p.ImageWidth; x++ {
-				world[x][y] = result[x][y]
+			wg.Wait()
+			for y := 0; y < p.ImageHeight; y++ {
+				for x := 0; x < p.ImageWidth; x++ {
+					world[x][y] = result[x][y]
+				}
 			}
+			c.events <- StateChange{CompletedTurns: i, NewState: Executing}
+			turn++
 		}
-		c.events <- StateChange{CompletedTurns: i, NewState: Executing}
-		turn++
 	}
 	close(jobs)
-	tickerStop <- true
+	defer ticker.Stop()
+	//tickerStop <- true
 	c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&world, &p)}
 
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
 
 	c.events <- StateChange{turn, Quitting}
-
-	c.ioCommand <- ioOutput
-	c.ioFilename <- strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.Turns)
-
-	for y := 0; y < p.ImageHeight; y++ {
-		for x := 0; x < p.ImageWidth; x++ {
-			c.ioOutput <- world[x][y]
-		}
-	}
-
-	c.ioCommand <- ioCheckIdle
-	<-c.ioIdle
 
 	close(c.events)
 }
