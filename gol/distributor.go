@@ -130,6 +130,22 @@ func distributor(p Params, c distributorChannels) {
 		go worker(&world, &result, &p, jobs, &wg)
 	}
 
+	// create a ticker to track time
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	tickerStop := make(chan bool)
+
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				c.events <- AliveCellsCount{CellsCount: len(getAliveCells(&world, &p)), CompletedTurns: turn}
+			case <-tickerStop:
+				return
+			}
+		}
+	}()
+
 	for i := 1; i <= numberOfTurns; i++ {
 		for j := 0; j < p.ImageHeight; j++ {
 			wg.Add(1)
@@ -145,12 +161,25 @@ func distributor(p Params, c distributorChannels) {
 		turn++
 	}
 	close(jobs)
+	tickerStop <- true
 	c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&world, &p)}
 
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
 
 	c.events <- StateChange{turn, Quitting}
+
+	c.ioCommand <- ioOutput
+	c.ioFilename <- strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.Turns)
+
+	for y := 0; y < p.ImageHeight; y++ {
+		for x := 0; x < p.ImageWidth; x++ {
+			c.ioOutput <- world[x][y]
+		}
+	}
+
+	c.ioCommand <- ioCheckIdle
+	<-c.ioIdle
 
 	close(c.events)
 }
