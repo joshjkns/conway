@@ -124,7 +124,6 @@ func distributor(p Params, c distributorChannels) {
 
 	turn := 0
 	c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
-	turn++ // turn is now 1
 
 	jobs := make(chan int, p.ImageHeight)
 	var wg sync.WaitGroup
@@ -140,7 +139,7 @@ func distributor(p Params, c distributorChannels) {
 	for i := 1; i <= p.Turns; i++ {
 		select {
 		case <-ticker.C:
-			c.events <- AliveCellsCount{CellsCount: len(getAliveCells(&world, &p)), CompletedTurns: turn - 1}
+			c.events <- AliveCellsCount{CellsCount: len(getAliveCells(&world, &p)), CompletedTurns: turn}
 		case kp := <-c.keyPresses:
 			switch kp {
 			case 's':
