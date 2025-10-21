@@ -3,11 +3,10 @@ package gol
 import (
 	"strconv"
 	"sync"
+	"time"
+
 	"uk.ac.bris.cs/gameoflife/util"
 )
-
-var world [][]byte
-var result [][]byte
 
 type distributorChannels struct {
 	events     chan<- Event
@@ -18,21 +17,21 @@ type distributorChannels struct {
 	ioInput    <-chan uint8
 }
 
-func incrementGol(p *Params, row int) {
+func incrementGol(world, result *[][]byte, p *Params, row int) {
 	for x := 0; x < (*p).ImageWidth; x++ {
 		y := row
-		liveNeighbours := countLiveNeighbours(x, y, p)
-		if world[x][y] == 255 { // current cell is alive
+		liveNeighbours := countLiveNeighbours(world, x, y, p)
+		if (*world)[x][y] == 255 { // current cell is alive
 			if liveNeighbours < 2 || liveNeighbours > 3 {
-				result[x][y] = 0
+				(*result)[x][y] = 0
 			} else {
-				result[x][y] = 255
+				(*result)[x][y] = 255
 			}
 		} else { // current cell is dead
 			if liveNeighbours == 3 {
-				result[x][y] = 255
+				(*result)[x][y] = 255
 			} else {
-				result[x][y] = 0
+				(*result)[x][y] = 0
 			}
 		}
 	}
@@ -55,7 +54,7 @@ func constrainValue(value int, constraint int) int {
 	return value
 }
 
-func countLiveNeighbours(x int, y int, p *Params) int {
+func countLiveNeighbours(world *[][]byte, x int, y int, p *Params) int {
 	count := 0
 	offsets := [][]int{{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}}
 	for _, offset := range offsets {
@@ -64,18 +63,18 @@ func countLiveNeighbours(x int, y int, p *Params) int {
 		xNeighbour = constrainValue(xNeighbour, (*p).ImageWidth)
 		yNeighbour = constrainValue(yNeighbour, (*p).ImageHeight)
 
-		if world[xNeighbour][yNeighbour] == 255 { // alive
+		if (*world)[xNeighbour][yNeighbour] == 255 { // alive
 			count += 1
 		}
 	}
 	return count
 }
 
-func getAliveCells(p *Params) []util.Cell {
+func getAliveCells(world *[][]byte, p *Params) []util.Cell {
 	var alive []util.Cell
 	for x := 0; x < (*p).ImageWidth; x++ {
 		for y := 0; y < (*p).ImageHeight; y++ {
-			if world[x][y] == 255 {
+			if (*world)[x][y] == 255 {
 				cell := util.Cell{X: x, Y: y}
 				alive = append(alive, cell)
 			}
@@ -84,10 +83,21 @@ func getAliveCells(p *Params) []util.Cell {
 	return alive
 }
 
-func worker(p *Params, jobs <-chan int, wg *sync.WaitGroup) {
+func worker(world, result *[][]byte, p *Params, jobs <-chan int, wg *sync.WaitGroup) {
 	for j := range jobs {
-		incrementGol(p, j)
+		incrementGol(world, result, p, j)
 		wg.Done()
+	}
+}
+
+func startTicker(ticker *time.Ticker, events chan<- Event, tickerStop <-chan bool, world *[][]byte, p *Params, turns *int) {
+	for {
+		select {
+		case <-ticker.C:
+			events <- AliveCellsCount{CellsCount: len(getAliveCells(world, p)), CompletedTurns: *turns}
+		case <-tickerStop:
+			return
+		}
 	}
 }
 
@@ -96,8 +106,8 @@ func distributor(p Params, c distributorChannels) {
 	c.ioCommand <- ioInput // give us the world in bytes
 	c.ioFilename <- strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight)
 
-	world = createWorld(p.ImageWidth, p.ImageHeight)
-	result = createWorld(p.ImageWidth, p.ImageHeight)
+	world := createWorld(p.ImageWidth, p.ImageHeight)
+	result := createWorld(p.ImageWidth, p.ImageHeight)
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			world[x][y] = <-c.ioInput
@@ -116,9 +126,8 @@ func distributor(p Params, c distributorChannels) {
 	jobs := make(chan int, p.ImageHeight)
 	var wg sync.WaitGroup
 
-	// TODO: Report the final state using FinalTurnCompleteEvent.
 	for i := 0; i < p.Threads; i++ {
-		go worker(&p, jobs, &wg)
+		go worker(&world, &result, &p, jobs, &wg)
 	}
 
 	for i := 1; i <= numberOfTurns; i++ {
@@ -136,14 +145,12 @@ func distributor(p Params, c distributorChannels) {
 		turn++
 	}
 	close(jobs)
-	c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&p)}
+	c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&world, &p)}
 
-	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
 
 	c.events <- StateChange{turn, Quitting}
 
-	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 	close(c.events)
 }
