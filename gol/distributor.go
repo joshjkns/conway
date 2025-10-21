@@ -73,9 +73,9 @@ func countLiveNeighbours(world *[][]byte, x int, y int, p *Params) int {
 
 func getAliveCells(world *[][]byte, p *Params) []util.Cell {
 	var alive []util.Cell
-	for x := 0; x < (*p).ImageWidth; x++ {
-		for y := 0; y < (*p).ImageHeight; y++ {
-			if (*world)[x][y] == 255 {
+	for y := 0; y < (*p).ImageHeight; y++ {
+		for x := 0; x < (*p).ImageWidth; x++ {
+			if (*world)[y][x] == 255 {
 				cell := util.Cell{X: x, Y: y}
 				alive = append(alive, cell)
 			}
@@ -97,7 +97,7 @@ func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
 
 	for y := 0; y < (*p).ImageHeight; y++ {
 		for x := 0; x < (*p).ImageWidth; x++ {
-			(*c).ioOutput <- (*world)[x][y]
+			(*c).ioOutput <- (*world)[y][x]
 		}
 	}
 
@@ -113,9 +113,14 @@ func distributor(p Params, c distributorChannels) {
 	c.ioFilename <- strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight)
 	world := createWorld(p.ImageWidth, p.ImageHeight)
 	result := createWorld(p.ImageWidth, p.ImageHeight)
+	var flipped []util.Cell
+
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
-			world[x][y] = <-c.ioInput
+			world[y][x] = <-c.ioInput
+			if world[y][x] == 255 {
+				flipped = append(flipped, util.Cell{X: x, Y: y})
+			}
 		}
 	}
 
@@ -123,6 +128,7 @@ func distributor(p Params, c distributorChannels) {
 	<-c.ioIdle
 
 	turn := 0
+	c.events <- CellsFlipped{Cells: flipped, CompletedTurns: turn}
 	c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
 
 	jobs := make(chan int, p.ImageHeight)
@@ -181,22 +187,30 @@ func distributor(p Params, c distributorChannels) {
 			}
 
 			wg.Wait()
+			var tempFlipped []util.Cell
 			for y := 0; y < p.ImageHeight; y++ {
 				for x := 0; x < p.ImageWidth; x++ {
-					world[x][y] = result[x][y]
+					if world[y][x] != result[y][x] {
+						tempFlipped = append(tempFlipped, util.Cell{X: x, Y: y})
+					}
+					world[y][x] = result[y][x]
 				}
 			}
-			c.events <- StateChange{CompletedTurns: i, NewState: Executing}
+			c.events <- CellsFlipped{Cells: tempFlipped, CompletedTurns: i}
+			c.events <- TurnComplete{CompletedTurns: i}
 			turn++
+
 		}
 	}
 	close(jobs)
 	defer ticker.Stop()
-	//tickerStop <- true
+
 	c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&world, &p)}
 
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
+
+	pgmImage(&p, &world, &c, &turn)
 
 	c.events <- StateChange{turn, Quitting}
 
