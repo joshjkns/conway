@@ -29,21 +29,25 @@ var offsets = [8][2]int{
 	{1, -1}, {1, 0}, {1, 1},
 }
 
-func incrementGol(world, result *[][]byte, p *Params, startRow, endRow int) {
+func flattenArray(width, height int) []byte {
+	return make([]byte, width*height)
+}
+
+func incrementGol(world, result *[]byte, p *Params, startRow, endRow int) {
 	for y := startRow; y <= endRow; y++ {
 		for x := 0; x < (*p).ImageWidth; x++ {
 			liveNeighbours := countLiveNeighbours(*world, x, y, p)
-			if (*world)[y][x] == 255 { // current cell is alive
+			if (*world)[y*(*p).ImageWidth+x] == 255 { // current cell is alive
 				if liveNeighbours < 2 || liveNeighbours > 3 {
-					(*result)[y][x] = 0
+					(*result)[y*(*p).ImageWidth+x] = 0
 				} else {
-					(*result)[y][x] = 255
+					(*result)[y*(*p).ImageWidth+x] = 255
 				}
 			} else { // current cell is dead
 				if liveNeighbours == 3 {
-					(*result)[y][x] = 255
+					(*result)[y*(*p).ImageWidth+x] = 255
 				} else {
-					(*result)[y][x] = 0
+					(*result)[y*(*p).ImageWidth+x] = 0
 				}
 			}
 		}
@@ -67,7 +71,7 @@ func constrainValue(value int, constraint int) int {
 	return value
 }
 
-func countLiveNeighbours(world [][]byte, x int, y int, p *Params) int {
+func countLiveNeighbours(world []byte, x int, y int, p *Params) int {
 	count := 0
 
 	for _, offset := range offsets {
@@ -76,18 +80,18 @@ func countLiveNeighbours(world [][]byte, x int, y int, p *Params) int {
 		xNeighbour = constrainValue(xNeighbour, (*p).ImageWidth)
 		yNeighbour = constrainValue(yNeighbour, (*p).ImageHeight)
 
-		if (world)[yNeighbour][xNeighbour] == 255 { // alive
+		if (world)[yNeighbour*(*p).ImageWidth+xNeighbour] == 255 { // alive
 			count += 1
 		}
 	}
 	return count
 }
 
-func getAliveCells(world *[][]byte, p *Params) []util.Cell {
+func getAliveCells(world *[]byte, p *Params) []util.Cell {
 	var alive []util.Cell
 	for y := 0; y < (*p).ImageHeight; y++ {
 		for x := 0; x < (*p).ImageWidth; x++ {
-			if (*world)[y][x] == 255 {
+			if (*world)[y*(*p).ImageWidth+x] == 255 {
 				cell := util.Cell{X: x, Y: y}
 				alive = append(alive, cell)
 			}
@@ -96,7 +100,7 @@ func getAliveCells(world *[][]byte, p *Params) []util.Cell {
 	return alive
 }
 
-func worker(world, result *[][]byte, p *Params, jobs <-chan Pair, wg *sync.WaitGroup) {
+func worker(world, result *[]byte, p *Params, jobs <-chan Pair, wg *sync.WaitGroup) {
 	for j := range jobs {
 		func() {
 			incrementGol(world, result, p, j.startRow, j.endRow)
@@ -105,14 +109,14 @@ func worker(world, result *[][]byte, p *Params, jobs <-chan Pair, wg *sync.WaitG
 
 	}
 }
-func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
+func pgmImage(p *Params, world *[]byte, c *distributorChannels, turns *int) {
 	(*c).ioCommand <- ioOutput
 	filename := strconv.Itoa((*p).ImageWidth) + "x" + strconv.Itoa((*p).ImageHeight) + "x" + strconv.Itoa(*turns)
 	(*c).ioFilename <- filename
 
 	for y := 0; y < (*p).ImageHeight; y++ {
 		for x := 0; x < (*p).ImageWidth; x++ {
-			(*c).ioOutput <- (*world)[y][x]
+			(*c).ioOutput <- (*world)[y*(*p).ImageWidth+x]
 		}
 	}
 
@@ -126,14 +130,25 @@ func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
 func distributor(p Params, c distributorChannels) {
 	c.ioCommand <- ioInput // give us the world in bytes
 	c.ioFilename <- strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight)
-	world := createWorld(p.ImageWidth, p.ImageHeight)
-	result := createWorld(p.ImageWidth, p.ImageHeight)
+	//world := createWorld(p.ImageWidth, p.ImageHeight)
+	//result := createWorld(p.ImageWidth, p.ImageHeight)
+	flatWorld := flattenArray(p.ImageWidth, p.ImageHeight)
+	flatResult := flattenArray(p.ImageWidth, p.ImageHeight)
 	var flipped []util.Cell
+
+	//for y := 0; y < p.ImageHeight; y++ {
+	//	for x := 0; x < p.ImageWidth; x++ {
+	//		world[y][x] = <-c.ioInput
+	//		if world[y][x] == 255 {
+	//			flipped = append(flipped, util.Cell{X: x, Y: y})
+	//		}
+	//	}
+	//}
 
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
-			world[y][x] = <-c.ioInput
-			if world[y][x] == 255 {
+			flatWorld[y*p.ImageWidth+x] = <-c.ioInput
+			if flatWorld[y*p.ImageWidth+x] == 255 {
 				flipped = append(flipped, util.Cell{X: x, Y: y})
 			}
 		}
@@ -150,7 +165,7 @@ func distributor(p Params, c distributorChannels) {
 	var wg sync.WaitGroup
 
 	for i := 0; i < p.Threads; i++ {
-		go worker(&world, &result, &p, jobs, &wg)
+		go worker(&flatWorld, &flatResult, &p, jobs, &wg)
 	}
 
 	//create a ticker to track time
@@ -160,17 +175,17 @@ func distributor(p Params, c distributorChannels) {
 	for i := 1; i <= p.Turns; i++ {
 		select {
 		case <-ticker.C:
-			c.events <- AliveCellsCount{CellsCount: len(getAliveCells(&world, &p)), CompletedTurns: turn}
+			c.events <- AliveCellsCount{CellsCount: len(getAliveCells(&flatWorld, &p)), CompletedTurns: turn}
 		case kp := <-c.keyPresses:
 			switch kp {
 			case 's':
 				{
-					pgmImage(&p, &world, &c, &turn)
+					pgmImage(&p, &flatWorld, &c, &turn)
 				}
 			case 'q':
 				{
-					c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&world, &p)}
-					pgmImage(&p, &world, &c, &turn)
+					c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&flatWorld, &p)}
+					pgmImage(&p, &flatWorld, &c, &turn)
 					c.events <- StateChange{CompletedTurns: turn, NewState: Quitting}
 					return
 				}
@@ -183,11 +198,11 @@ func distributor(p Params, c distributorChannels) {
 							break
 						}
 						if kp == 's' {
-							pgmImage(&p, &world, &c, &turn)
+							pgmImage(&p, &flatWorld, &c, &turn)
 						}
 						if kp == 'q' {
-							c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&world, &p)}
-							pgmImage(&p, &world, &c, &turn)
+							c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&flatWorld, &p)}
+							pgmImage(&p, &flatWorld, &c, &turn)
 							c.events <- StateChange{CompletedTurns: turn, NewState: Quitting}
 							return
 						}
@@ -211,10 +226,10 @@ func distributor(p Params, c distributorChannels) {
 			var tempFlipped []util.Cell
 			for y := 0; y < p.ImageHeight; y++ {
 				for x := 0; x < p.ImageWidth; x++ {
-					if world[y][x] != result[y][x] {
+					if flatWorld[y*(p).ImageWidth+x] != flatResult[y*(p).ImageWidth+x] {
 						tempFlipped = append(tempFlipped, util.Cell{X: x, Y: y})
 					}
-					world[y][x] = result[y][x]
+					flatWorld[y*(p).ImageWidth+x] = flatResult[y*(p).ImageWidth+x]
 				}
 			}
 			c.events <- CellsFlipped{Cells: tempFlipped, CompletedTurns: i}
@@ -226,12 +241,12 @@ func distributor(p Params, c distributorChannels) {
 	close(jobs)
 	defer ticker.Stop()
 
-	c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&world, &p)}
+	c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&flatWorld, &p)}
 
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
 
-	pgmImage(&p, &world, &c, &turn)
+	pgmImage(&p, &flatWorld, &c, &turn)
 
 	c.events <- StateChange{turn, Quitting}
 
