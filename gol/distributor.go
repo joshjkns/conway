@@ -18,21 +18,33 @@ type distributorChannels struct {
 	keyPresses <-chan rune
 }
 
-func incrementGol(world, result *[][]byte, p *Params, row int) {
-	for x := 0; x < (*p).ImageWidth; x++ {
-		y := row
-		liveNeighbours := countLiveNeighbours(world, x, y, p)
-		if (*world)[x][y] == 255 { // current cell is alive
-			if liveNeighbours < 2 || liveNeighbours > 3 {
-				(*result)[x][y] = 0
-			} else {
-				(*result)[x][y] = 255
-			}
-		} else { // current cell is dead
-			if liveNeighbours == 3 {
-				(*result)[x][y] = 255
-			} else {
-				(*result)[x][y] = 0
+type Pair struct {
+	startRow int
+	endRow   int
+}
+
+var offsets = [8][2]int{
+	{-1, -1}, {-1, 0}, {-1, 1},
+	{0, -1}, {0, 1},
+	{1, -1}, {1, 0}, {1, 1},
+}
+
+func incrementGol(world, result *[][]byte, p *Params, startRow, endRow int) {
+	for y := startRow; y <= endRow; y++ {
+		for x := 0; x < (*p).ImageWidth; x++ {
+			liveNeighbours := countLiveNeighbours(*world, x, y, p)
+			if (*world)[y][x] == 255 { // current cell is alive
+				if liveNeighbours < 2 || liveNeighbours > 3 {
+					(*result)[y][x] = 0
+				} else {
+					(*result)[y][x] = 255
+				}
+			} else { // current cell is dead
+				if liveNeighbours == 3 {
+					(*result)[y][x] = 255
+				} else {
+					(*result)[y][x] = 0
+				}
 			}
 		}
 	}
@@ -55,16 +67,16 @@ func constrainValue(value int, constraint int) int {
 	return value
 }
 
-func countLiveNeighbours(world *[][]byte, x int, y int, p *Params) int {
+func countLiveNeighbours(world [][]byte, x int, y int, p *Params) int {
 	count := 0
-	offsets := [][]int{{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}}
+
 	for _, offset := range offsets {
 		xNeighbour := x + offset[0]
 		yNeighbour := y + offset[1]
 		xNeighbour = constrainValue(xNeighbour, (*p).ImageWidth)
 		yNeighbour = constrainValue(yNeighbour, (*p).ImageHeight)
 
-		if (*world)[xNeighbour][yNeighbour] == 255 { // alive
+		if (world)[yNeighbour][xNeighbour] == 255 { // alive
 			count += 1
 		}
 	}
@@ -84,10 +96,13 @@ func getAliveCells(world *[][]byte, p *Params) []util.Cell {
 	return alive
 }
 
-func worker(world, result *[][]byte, p *Params, jobs <-chan int, wg *sync.WaitGroup) {
+func worker(world, result *[][]byte, p *Params, jobs <-chan Pair, wg *sync.WaitGroup) {
 	for j := range jobs {
-		incrementGol(world, result, p, j)
-		wg.Done()
+		func() {
+			incrementGol(world, result, p, j.startRow, j.endRow)
+			defer wg.Done()
+		}()
+
 	}
 }
 func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
@@ -131,7 +146,7 @@ func distributor(p Params, c distributorChannels) {
 	c.events <- CellsFlipped{Cells: flipped, CompletedTurns: turn}
 	c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
 
-	jobs := make(chan int, p.ImageHeight)
+	jobs := make(chan Pair, p.ImageHeight)
 	var wg sync.WaitGroup
 
 	for i := 0; i < p.Threads; i++ {
@@ -181,9 +196,15 @@ func distributor(p Params, c distributorChannels) {
 				}
 			}
 		default:
-			for j := 0; j < p.ImageHeight; j++ {
+			chunkHeight := p.ImageHeight / p.Threads
+			for j := 0; j < p.Threads; j++ {
+				startRow := j * chunkHeight
+				endRow := startRow + chunkHeight - 1
+				if j == p.Threads-1 {
+					endRow = p.ImageHeight - 1
+				}
 				wg.Add(1)
-				jobs <- j
+				jobs <- Pair{startRow, endRow}
 			}
 
 			wg.Wait()
@@ -198,8 +219,8 @@ func distributor(p Params, c distributorChannels) {
 			}
 			c.events <- CellsFlipped{Cells: tempFlipped, CompletedTurns: i}
 			c.events <- TurnComplete{CompletedTurns: i}
-			turn++
 
+			turn++
 		}
 	}
 	close(jobs)
