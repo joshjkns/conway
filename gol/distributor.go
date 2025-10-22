@@ -16,6 +16,7 @@ type distributorChannels struct {
 	ioFilename chan<- string
 	ioOutput   chan<- uint8
 	ioInput    <-chan uint8
+	keyPresses <-chan rune
 }
 
 type Input struct {
@@ -29,6 +30,8 @@ type Output struct {
 	World [][]byte
 	Turns int
 }
+
+var paused bool
 
 func createWorld(p *Params) [][]byte {
 	newWorld := make([][]byte, (*p).ImageHeight)
@@ -87,6 +90,12 @@ func distributor(p Params, c distributorChannels) {
 	turn++ // turn is now 1
 
 	client, err := rpc.Dial("tcp", "localhost:8030")
+	defer client.Close()
+	if err != nil {
+		panic(err)
+	}
+	var id = time.Now().String()
+	err = client.Call("DistributingComp.Register", id, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -109,6 +118,49 @@ func distributor(p Params, c distributorChannels) {
 				}
 				aliveCells := getAliveCells(&alive.World, &p)
 				c.events <- AliveCellsCount{CompletedTurns: alive.Turns, CellsCount: len(aliveCells)}
+			case kp := <-c.keyPresses:
+				switch kp {
+				case 'q':
+					err = client.Call("DistributingComp.Unregister", id, nil)
+					if err != nil {
+						panic(err)
+					}
+					return // returing out of the go func FIX
+				case 's':
+					var empty Input
+					var alive Output
+					err := client.Call("DistributingComp.GetCurrentState", empty, &alive)
+					if err != nil {
+						panic(err)
+					}
+					pgmImage(&p, &alive.World, &c, &alive.Turns)
+				case 'k':
+					var empty Input
+					var alive Output
+					err := client.Call("DistributingComp.GetCurrentState", empty, &alive)
+					if err != nil {
+						panic(err)
+					}
+					c.events <- FinalTurnComplete{CompletedTurns: alive.Turns, Alive: getAliveCells(&alive.World, &p)}
+					pgmImage(&p, &alive.World, &c, &alive.Turns)
+					c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Quitting}
+					_ = client.Call("DistributingComp.QuitProgram", nil, nil)
+					return
+				case 'p':
+					var alive Output
+					if paused {
+						_ = client.Call("DistributingComp.TogglePaused", nil, nil)
+						err = client.Call("DistributingComp.GetCurrentState", nil, &alive)
+						c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Executing}
+						paused = false
+					} else {
+						err = client.Call("DistributingComp.GetCurrentState", nil, &alive)
+						_ = client.Call("DistributingComp.TogglePaused", nil, nil)
+						c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Paused}
+						fmt.Println(alive.Turns)
+						paused = true
+					}
+				}
 			}
 		}
 	}()
