@@ -4,34 +4,38 @@ import (
 	"fmt"
 	"net"
 	"net/rpc"
-	"sync"
-	"time"
 )
 
-type Input struct {
-	World  [][]byte
-	Height int
+type WorkerInput struct {
+	Read   [][]byte
 	Width  int
-	Turns  int
+	StartY int
+	EndY   int
 }
 
-type Output struct {
-	World [][]byte
-	Turns int
+type WorkerOutput struct {
+	Write    [][]byte
+	StartRow int
+	EndRow   int
 }
 
-type DistributingComp struct {
-	clients sync.Map
+type Data struct {
+	Address string
+	Id      int
 }
+type WorkerComp struct{}
 
 var offsets = [][]int{{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}}
 
-var currentWorld [][]byte
-var currentTurns int
-var paused = false
-var quit bool
-var mu sync.Mutex
-var cond = sync.NewCond(&mu)
+//func stripHalo(world [][]byte) [][]byte {
+//	height := len(world)
+//	width := len(world[0])
+//	out := make([][]byte, height-2)
+//	for y := 1; y < height-1; y++ {
+//		out = append(out, world[y][1:width-1])
+//	}
+//	return out
+//}
 
 func createWorldWorker(width, height int) [][]byte {
 	newWorld := make([][]byte, height)
@@ -41,22 +45,24 @@ func createWorldWorker(width, height int) [][]byte {
 	return newWorld
 }
 
-func incrementGolWorker(world *[][]byte, width, height int) [][]byte {
-	newWorld := createWorldWorker(width, height)
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			liveNeighbours := countLiveNeighboursWorker(world, x, y, width, height)
-			if (*world)[y][x] == 255 { // current cell is alive
+func incrementGolWorker(section *[][]byte, width, height, startX, startY int) [][]byte {
+	fmt.Println(width, height, startX, startY, len(*section), len((*section)[0]))
+	newWorld := createWorldWorker(width, height) // actual part we are updating
+	//fmt.Println(len(*section), len((*section)[0]), width, height)
+	for y := 1; y < len(*section)-1; y++ { // only checks actual part
+		for x := 1; x < len((*section)[0])-1; x++ {
+			liveNeighbours := countLiveNeighboursWorker(section, x, y, width, height)
+			if (*section)[y][x] == 255 { // current cell is alive
 				if liveNeighbours < 2 || liveNeighbours > 3 {
-					newWorld[y][x] = 0
+					newWorld[y-1][x-1] = 0
 				} else {
-					newWorld[y][x] = 255
+					newWorld[y-1][x-1] = 255
 				}
 			} else { // current cell is dead
 				if liveNeighbours == 3 {
-					newWorld[y][x] = 255
+					newWorld[y-1][x-1] = 255
 				} else {
-					newWorld[y][x] = 0
+					newWorld[y-1][x-1] = 0
 				}
 			}
 		}
@@ -75,12 +81,13 @@ func constrainValueWorker(value int, constraint int) int {
 
 func countLiveNeighboursWorker(world *[][]byte, x int, y int, width, height int) int {
 	count := 0
+
 	for _, offset := range offsets {
 		xNeighbour := x + offset[0]
 		yNeighbour := y + offset[1]
-		xNeighbour = constrainValueWorker(xNeighbour, width)
-		yNeighbour = constrainValueWorker(yNeighbour, height)
-
+		//xNeighbour = constrainValueWorker(xNeighbour, width)
+		//yNeighbour = constrainValueWorker(yNeighbour, height)
+		//fmt.Println(x, y, width, height, xNeighbour, yNeighbour)
 		if (*world)[yNeighbour][xNeighbour] == 255 { // alive
 			count += 1
 		}
@@ -88,79 +95,24 @@ func countLiveNeighboursWorker(world *[][]byte, x int, y int, width, height int)
 	return count
 }
 
-func (d *DistributingComp) TogglePaused(args bool, reply *Output) error {
-	println(paused)
-	paused = args
-	println(currentTurns)
-	cond.Broadcast()
-	return nil
-}
-
-func (d *DistributingComp) Register(id string, reply *Output) error {
-	d.clients.Store(id, time.Now())
-	fmt.Println("Registered Client: ", id)
-	fmt.Println("NUm of turns: ", currentTurns)
-	paused = false
-	return nil
-}
-
-func (d *DistributingComp) Unregister(id string, reply *Output) error {
-	d.clients.Delete(id)
-	fmt.Println("Unregistered Client: ", id)
-	fmt.Println("NUm of turns: ", currentTurns)
-	paused = true
-	return nil
-}
-
-func (d *DistributingComp) QuitProgram(args *Input, reply *Output) error {
-	currentTurns = 0
-	quit = true
-	return nil
-}
-
-func (d *DistributingComp) GetCurrentState(args *Input, reply *Output) error {
-	reply.World = currentWorld
-	reply.Turns = currentTurns
-	return nil
-}
-
-func (d *DistributingComp) Process(args *Input, reply *Output) error {
-	// TODO: Create a 2D slice to store the world.
+func (w *WorkerComp) GameOfLife(args *WorkerInput, reply *WorkerOutput) error {
 	width := args.Width
-	height := args.Height
-	worldInput := (*args).World
-	numberOfTurns := args.Turns
+	startRow := args.StartY
+	endRow := args.EndY
+	height := (endRow + 1) - startRow
+	worldInput := (*args).Read
 
-	// TODO: Execute all turns of the Game of Life.
-	for i := 1; i <= numberOfTurns; i++ {
-		if quit {
-			reply.World = worldInput
-			reply.Turns = currentTurns
-			return nil
-		}
-
-		mu.Lock()
-		if paused {
-			for paused {
-				cond.Wait()
-			}
-		}
-		mu.Unlock()
-		worldInput = incrementGolWorker(&worldInput, width, height)
-
-		currentWorld = worldInput
-		currentTurns++
-	}
-	reply.World = worldInput
-	reply.Turns = numberOfTurns
-	currentTurns = 0
-	currentWorld = worldInput
+	newWorld := incrementGolWorker(&worldInput, width, height, 0, startRow)
+	fmt.Println(len(newWorld))
+	reply.Write = newWorld
+	reply.StartRow = startRow
+	reply.EndRow = endRow
 	return nil
 }
 
 func main() {
-	d := new(DistributingComp)
-	err := rpc.Register(d)
+	w := new(WorkerComp)
+	err := rpc.Register(w)
 	if err != nil {
 		panic(err)
 	}
@@ -169,14 +121,13 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Println("RPC connected on port 8030")
 	defer listener.Close()
-	go rpc.Accept(listener)
-	for {
-		if quit {
-			return
-		}
-	}
+	fmt.Println("[Worker] RPC connected on port 8030")
+
+	client, _ := rpc.Dial("tcp", "localhost:8031")
+	inputData := &Data{Address: "localhost:8030", Id: 0}
+	outputData := new(WorkerOutput)
+	client.Call("BrokerComp.Register", inputData, outputData)
+	rpc.Accept(listener)
 
 }

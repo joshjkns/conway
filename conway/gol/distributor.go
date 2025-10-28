@@ -1,23 +1,11 @@
 package gol
 
 import (
-	"fmt"
 	"net/rpc"
 	"strconv"
-	"time"
 
 	"uk.ac.bris.cs/gameoflife/util"
 )
-
-type distributorChannels struct {
-	events     chan<- Event
-	ioCommand  chan<- ioCommand
-	ioIdle     <-chan bool
-	ioFilename chan<- string
-	ioOutput   chan<- uint8
-	ioInput    <-chan uint8
-	keyPresses <-chan rune
-}
 
 type Input struct {
 	World  [][]byte
@@ -29,6 +17,16 @@ type Input struct {
 type Output struct {
 	World [][]byte
 	Turns int
+}
+
+type distributorChannels struct {
+	events     chan<- Event
+	ioCommand  chan<- ioCommand
+	ioIdle     <-chan bool
+	ioFilename chan<- string
+	ioOutput   chan<- uint8
+	ioInput    <-chan uint8
+	keyPresses <-chan rune
 }
 
 var paused bool
@@ -88,103 +86,120 @@ func distributor(p Params, c distributorChannels) {
 	c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
 	turn++ // turn is now 1
 
-	client, err := rpc.Dial("tcp", "localhost:8030")
+	client, err := rpc.Dial("tcp", "localhost:8031")
+	if err != nil {
+		panic(err)
+	}
 	defer client.Close()
-	if err != nil {
-		panic(err)
-	}
-	var id = time.Now().String()
-	err = client.Call("DistributingComp.Register", id, nil)
-	if err != nil {
-		panic(err)
-	}
+	//if err != nil {
+	//	panic(err)
+	//}
+	//var id = time.Now().String()
+	//err = client.Call("BrokerComp.Register", id, nil)
+	//if err != nil {
+	//	panic(err)
+	//}
 
 	args := Input{world, p.ImageHeight, p.ImageWidth, p.Turns}
 	var reply Output
 
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	done := make(chan *rpc.Call, 1)
-	go client.Go("DistributingComp.Process", args, &reply, done)
+	//ticker := time.NewTicker(2 * time.Second)
+	//defer ticker.Stop()
+	//done := make(chan *rpc.Call, 1)
+	err = client.Call("BrokerComp.Process", args, &reply)
 
-	for {
-		select {
-		case <-ticker.C:
-			var empty Input
-			var alive Output
-			if !paused {
-				err := client.Call("DistributingComp.GetCurrentState", empty, &alive)
-				if err != nil {
-					panic(err)
-				}
-				aliveCells := getAliveCells(&alive.World, &p)
-				c.events <- AliveCellsCount{CompletedTurns: alive.Turns, CellsCount: len(aliveCells)}
-			}
-		case kp := <-c.keyPresses:
-			switch kp {
-			case 'q':
-				var empty Input
-				var alive Output
-				err := client.Call("DistributingComp.GetCurrentState", empty, &alive)
-				err = client.Call("DistributingComp.Unregister", id, nil)
-				if err != nil {
-					panic(err)
-				}
-				c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Quitting}
-				return
-			case 's':
-				var empty Input
-				var alive Output
-				err := client.Call("DistributingComp.GetCurrentState", empty, &alive)
-				if err != nil {
-					panic(err)
-				}
-				pgmImage(&p, &alive.World, &c, &alive.Turns)
-			case 'k':
-				var empty Input
-				var alive Output
-				err := client.Call("DistributingComp.GetCurrentState", empty, &alive)
-				if err != nil {
-					panic(err)
-				}
-				c.events <- FinalTurnComplete{CompletedTurns: alive.Turns, Alive: getAliveCells(&alive.World, &p)}
-				pgmImage(&p, &alive.World, &c, &alive.Turns)
-				c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Quitting}
-				_ = client.Call("DistributingComp.QuitProgram", empty, &alive)
-				return
-			case 'p':
-				var empty Input
-				var alive Output
-
-				if paused {
-					err = client.Call("DistributingComp.GetCurrentState", empty, &alive)
-					_ = client.Call("DistributingComp.TogglePaused", false, &alive)
-					c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Executing}
-					paused = false
-				} else {
-					err = client.Call("DistributingComp.TogglePaused", true, &alive)
-					err = client.Call("DistributingComp.GetCurrentState", empty, &alive)
-
-					c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Paused}
-					fmt.Println(alive.Turns)
-					paused = true
-				}
-			}
-		case <-done:
-			if err != nil {
-				panic(err)
-			}
-
-			c.events <- FinalTurnComplete{CompletedTurns: reply.Turns, Alive: getAliveCells(&reply.World, &p)}
-
-			pgmImage(&p, &reply.World, &c, &reply.Turns)
-
-			c.ioCommand <- ioCheckIdle
-			<-c.ioIdle
-			c.events <- StateChange{reply.Turns, Quitting}
-
-			close(c.events)
-			return
-		}
+	if err != nil {
+		panic(err)
 	}
+	//fmt.Println("WORLD : ", &reply.World, len(reply.World))
+	c.events <- FinalTurnComplete{CompletedTurns: reply.Turns, Alive: getAliveCells(&reply.World, &p)}
+
+	pgmImage(&p, &reply.World, &c, &reply.Turns)
+
+	c.ioCommand <- ioCheckIdle
+	<-c.ioIdle
+	c.events <- StateChange{reply.Turns, Quitting}
+
+	close(c.events)
+	return
+	//for {
+	//	select {
+	//	case <-ticker.C:
+	//		var empty Input
+	//		var alive Output
+	//		if !paused {
+	//			err := client.Call("Broker.GetCurrentState", empty, &alive)
+	//			if err != nil {
+	//				panic(err)
+	//			}
+	//			aliveCells := getAliveCells(&alive.World, &p)
+	//			c.events <- AliveCellsCount{CompletedTurns: alive.Turns, CellsCount: len(aliveCells)}
+	//		}
+	//	case kp := <-c.keyPresses:
+	//		switch kp {
+	//		case 'q':
+	//			var empty Input
+	//			var alive Output
+	//			err := client.Call("Broker.GetCurrentState", empty, &alive)
+	//			//err = client.Call("Broker.Unregister", id, nil)
+	//			if err != nil {
+	//				panic(err)
+	//			}
+	//			c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Quitting}
+	//			return
+	//		case 's':
+	//			var empty Input
+	//			var alive Output
+	//			err := client.Call("Broker.GetCurrentState", empty, &alive)
+	//			if err != nil {
+	//				panic(err)
+	//			}
+	//			pgmImage(&p, &alive.World, &c, &alive.Turns)
+	//		case 'k':
+	//			var empty Input
+	//			var alive Output
+	//			err := client.Call("Broker.GetCurrentState", empty, &alive)
+	//			if err != nil {
+	//				panic(err)
+	//			}
+	//			c.events <- FinalTurnComplete{CompletedTurns: alive.Turns, Alive: getAliveCells(&alive.World, &p)}
+	//			pgmImage(&p, &alive.World, &c, &alive.Turns)
+	//			c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Quitting}
+	//			_ = client.Call("Broker.QuitProgram", empty, &alive)
+	//			return
+	//		case 'p':
+	//			var empty Input
+	//			var alive Output
+	//
+	//			if paused {
+	//				err = client.Call("Broker.GetCurrentState", empty, &alive)
+	//				_ = client.Call("Broker.TogglePaused", false, &alive)
+	//				c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Executing}
+	//				paused = false
+	//			} else {
+	//				err = client.Call("Broker.TogglePaused", true, &alive)
+	//				err = client.Call("Broker.GetCurrentState", empty, &alive)
+	//
+	//				c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Paused}
+	//				fmt.Println(alive.Turns)
+	//				paused = true
+	//			}
+	//		}
+	//	case <-done:
+	//		if err != nil {
+	//			panic(err)
+	//		}
+	//
+	//		c.events <- FinalTurnComplete{CompletedTurns: reply.Turns, Alive: getAliveCells(&reply.World, &p)}
+	//
+	//		pgmImage(&p, &reply.World, &c, &reply.Turns)
+	//
+	//		c.ioCommand <- ioCheckIdle
+	//		<-c.ioIdle
+	//		c.events <- StateChange{reply.Turns, Quitting}
+	//
+	//		close(c.events)
+	//		return
+	//	}
+	//}
 }
