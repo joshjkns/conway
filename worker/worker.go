@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net"
 	"net/rpc"
@@ -23,7 +24,9 @@ type Data struct {
 	Address string
 	Id      int
 }
-type WorkerComp struct{}
+type WorkerComp struct {
+	quit bool
+}
 
 var offsets = [][]int{{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}}
 
@@ -46,7 +49,7 @@ func createWorldWorker(width, height int) [][]byte {
 }
 
 func incrementGolWorker(section *[][]byte, width, height, startX, startY int) [][]byte {
-	fmt.Println(width, height, startX, startY, len(*section), len((*section)[0]))
+	//fmt.Println(width, height, startX, startY, len(*section), len((*section)[0]))
 	newWorld := createWorldWorker(width, height) // actual part we are updating
 	//fmt.Println(len(*section), len((*section)[0]), width, height)
 	for y := 1; y < len(*section)-1; y++ { // only checks actual part
@@ -110,6 +113,11 @@ func (w *WorkerComp) GameOfLife(args *WorkerInput, reply *WorkerOutput) error {
 	return nil
 }
 
+func (w *WorkerComp) QuitWorker(args bool, repl *WorkerOutput) error {
+	w.quit = true
+	return nil
+}
+
 func main() {
 	w := new(WorkerComp)
 	err := rpc.Register(w)
@@ -117,17 +125,25 @@ func main() {
 		panic(err)
 	}
 
-	listener, err := net.Listen("tcp", ":8030")
+	var portAddr = flag.String("port", ":8030", "port to listen on")
+	var id = flag.Int("id", 0, "id of worker")
+	flag.Parse()
+
+	listener, err := net.Listen("tcp", *portAddr)
 	if err != nil {
 		panic(err)
 	}
 	defer listener.Close()
-	fmt.Println("[Worker] RPC connected on port 8030")
+	fmt.Println("[Worker] RPC connected on port", *portAddr)
 
 	client, _ := rpc.Dial("tcp", "localhost:8031")
-	inputData := &Data{Address: "localhost:8030", Id: 0}
+	inputData := &Data{Address: "localhost" + *portAddr, Id: *id}
 	outputData := new(WorkerOutput)
 	client.Call("BrokerComp.Register", inputData, outputData)
-	rpc.Accept(listener)
-
+	go rpc.Accept(listener)
+	for {
+		if w.quit {
+			return
+		}
+	}
 }

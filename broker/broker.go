@@ -8,8 +8,13 @@ import (
 )
 
 type BrokerComp struct {
-	workers map[Data]*rpc.Client
-	mu      sync.Mutex
+	workers      map[Data]*rpc.Client
+	mu           sync.Mutex
+	cond         sync.Cond
+	currentWorld [][]byte
+	turns        int
+	paused       bool
+	quit         bool
 }
 
 type Data struct {
@@ -38,9 +43,8 @@ type WorkerOutput struct {
 }
 
 type Output struct {
-	World    [][]byte
-	StartRow int
-	EndRow   int
+	World [][]byte
+	Turns int
 }
 
 func createWorld(width, height int) [][]byte {
@@ -86,11 +90,20 @@ func createChunk(world [][]byte, width, height, startY, endY int) [][]byte {
 
 func (b *BrokerComp) TogglePaused(args bool, reply *Output) error {
 	// toggle paused in every worker
+	b.paused = args
+	b.cond.Broadcast()
 	return nil
 }
 
 func (b *BrokerComp) GetCurrentState(args *Input, reply *Output) error {
 	// get state of all individual workers, reconstruct and return to the distributor
+	reply.World = b.currentWorld
+	reply.Turns = b.turns
+	return nil
+}
+
+func (b *BrokerComp) QuitProgram(args *Input, reply *Output) error {
+	b.quit = true
 	return nil
 }
 
@@ -103,6 +116,18 @@ func (b *BrokerComp) Process(args *Input, reply *Output) error {
 	world := args.World
 
 	for k := 1; k <= args.Turns; k++ {
+		if b.quit {
+			return nil
+		}
+
+		b.mu.Lock()
+		if b.paused {
+			for b.paused {
+				b.cond.Wait()
+			}
+		}
+		b.mu.Unlock()
+
 		rowsPerWorker := args.Height / workers
 		count := 0
 
@@ -146,18 +171,13 @@ func (b *BrokerComp) Process(args *Input, reply *Output) error {
 				}
 			}
 		}
+		b.currentWorld = world
+		b.turns = k
 	}
-	//for x := 0; x < len(world); x++ {
-	//	for y := 0; y < len(world[x]); y++ {
-	//		if world[x][y] != args.World[x][y] {
-	//			fmt.Println("different")
-	//		}
-	//	}
-	//}
-	//if world == args.World{
-
-	//}
-	reply.World = world
+	reply.World = world // done all turns
+	reply.Turns = b.turns
+	b.turns = 0
+	b.currentWorld = nil
 	return nil
 }
 
@@ -195,6 +215,7 @@ func (b *BrokerComp) Unregister(args *Data, reply *Output) error {
 
 func main() {
 	b := &BrokerComp{workers: make(map[Data]*rpc.Client)}
+	b.cond = *sync.NewCond(&b.mu)
 
 	err := rpc.Register(b)
 	if err != nil {
@@ -208,5 +229,19 @@ func main() {
 	defer listener.Close()
 
 	fmt.Println("[Broker] RPC connected on port 8031")
-	rpc.Accept(listener)
+	go rpc.Accept(listener)
+	for {
+		if b.quit {
+			fmt.Println(b.workers)
+			// send rpc to all workers saying quit
+			//for _, worker := range b.workers {
+			//	var reply Output
+			//	worker.Call("WorkerComp.QuitWorker", true, &reply)
+			//	if err != nil {
+			//		print("ERROR: ", err)
+			//	}
+			//}
+			return
+		}
+	}
 }
