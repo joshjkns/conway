@@ -148,9 +148,17 @@ func (b *BrokerComp) Process(args *Input, reply *Output) error {
 	var channels = make([]chan *rpc.Call, workers) // making done channels
 	var argArray = make([]WorkerInput, workers)
 	var replyArray = make([]WorkerOutput, workers)
-	world := args.World
+	var world = args.World
 	if b.currentWorld != nil {
+		fmt.Println("fagshdfvhesbgv")
 		world = b.currentWorld
+	} else {
+		b.currentWorld = createWorld(args.Width, args.Height)
+		for y := 0; y < args.Height; y++ {
+			for x := 0; x < args.Width; x++ {
+				b.currentWorld[y][x] = world[y][x]
+			}
+		}
 	}
 	x := b.turns
 
@@ -210,19 +218,20 @@ func (b *BrokerComp) Process(args *Input, reply *Output) error {
 			for i := startRow; i <= endRow; i++ {
 				//fmt.Println(i)
 				for j := 0; j < len(chunkWorld[i-startRow]); j++ {
-					world[i][j] = chunkWorld[i-startRow][j]
-					if world[i][j] == 255 {
+					world[i][j] = chunkWorld[i-startRow][j] // update world
+					if world[i][j] != b.currentWorld[i][j] {
+						fmt.Println("DIFFERENT")
 						flipped = append(flipped, Cell{X: j, Y: i})
 					}
+					b.currentWorld[i][j] = world[i][j]
 				}
 			}
 		}
 		var cellsFlippedData CellsFlippedData
 		cellsFlippedData.Cells = flipped
 		cellsFlippedData.CompletedTurns = b.turns
-		//var flipReply Output
-		//b.distributor.Call("DistributorComp.Flip", cellsFlippedData, &flipReply)
-		b.currentWorld = world
+		var flipReply Output
+		b.distributor.Call("DistributorComp.Flip", cellsFlippedData, &flipReply)
 		b.turns = k
 	}
 	reply.World = world // done all turns

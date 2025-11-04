@@ -46,6 +46,7 @@ type distributorChannels struct {
 }
 
 var paused bool
+var channels distributorChannels
 
 func createWorld(p *Params) [][]byte {
 	newWorld := make([][]byte, (*p).ImageHeight)
@@ -86,13 +87,14 @@ func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
 }
 
 func (d *DistributorComp) Flip(args CellsFlippedData, reply *Output) error {
-	d.c.events <- CellsFlipped{Cells: args.Cells, CompletedTurns: args.CompletedTurns}
-	d.c.events <- TurnComplete{CompletedTurns: args.CompletedTurns}
+	channels.events <- CellsFlipped{Cells: args.Cells, CompletedTurns: args.CompletedTurns}
+	channels.events <- TurnComplete{CompletedTurns: args.CompletedTurns}
 	return nil
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
+	channels = c
 	c.ioCommand <- ioInput // give us the world in bytes
 	c.ioFilename <- strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight)
 	world := createWorld(&p)
@@ -114,7 +116,7 @@ func distributor(p Params, c distributorChannels) {
 	turn++ // turn is now
 
 	listener, _ := net.Listen("tcp", ":8025")
-	rpc.Register(&DistributorComp{c: c})
+	rpc.Register(&DistributorComp{})
 	defer listener.Close()
 	go rpc.Accept(listener)
 
