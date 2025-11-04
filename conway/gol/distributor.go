@@ -2,12 +2,26 @@ package gol
 
 import (
 	"fmt"
+	"net"
 	"net/rpc"
 	"strconv"
 	"time"
 
 	"uk.ac.bris.cs/gameoflife/util"
 )
+
+type DistributorComp struct {
+	c distributorChannels
+}
+
+type CellsFlippedData struct {
+	Cells          []util.Cell
+	CompletedTurns int
+}
+
+type PausedStruct struct {
+	Paused bool
+}
 
 type Input struct {
 	World  [][]byte
@@ -43,8 +57,8 @@ func createWorld(p *Params) [][]byte {
 
 func getAliveCells(world *[][]byte, p *Params) []util.Cell {
 	var alive []util.Cell
-	for y := 0; y < (*p).ImageHeight; y++ {
-		for x := 0; x < (*p).ImageWidth; x++ {
+	for y := 0; y < len(*world); y++ {
+		for x := 0; x < (len((*world)[0])); x++ {
 			if (*world)[y][x] == 255 {
 				cell := util.Cell{X: x, Y: y}
 				alive = append(alive, cell)
@@ -71,6 +85,12 @@ func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
 
 }
 
+func (d *DistributorComp) Flip(args CellsFlippedData, reply *Output) error {
+	d.c.events <- CellsFlipped{Cells: args.Cells, CompletedTurns: args.CompletedTurns}
+	d.c.events <- TurnComplete{CompletedTurns: args.CompletedTurns}
+	return nil
+}
+
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
 	c.ioCommand <- ioInput // give us the world in bytes
@@ -86,7 +106,12 @@ func distributor(p Params, c distributorChannels) {
 
 	turn := 0
 	c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
-	turn++ // turn is now 1
+	turn++ // turn is now
+
+	listener, _ := net.Listen("tcp", ":8025")
+	rpc.Register(&DistributorComp{c: c})
+	defer listener.Close()
+	go rpc.Accept(listener)
 
 	client, err := rpc.Dial("tcp", "localhost:8031")
 	if err != nil {
@@ -100,8 +125,11 @@ func distributor(p Params, c distributorChannels) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	done := make(chan *rpc.Call, 1)
-	go client.Go("BrokerComp.Process", args, &reply, done)
+	var isPaused PausedStruct
+	_ = client.Call("BrokerComp.ClientConnect", "localhost:8025", &isPaused)
+	paused = isPaused.Paused
 
+	go client.Go("BrokerComp.Process", args, &reply, done)
 	if err != nil {
 		panic(err)
 	}
@@ -132,8 +160,7 @@ func distributor(p Params, c distributorChannels) {
 					panic(err)
 				}
 				c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Quitting}
-				_ = client.Call("BrokerComp.QuitProgram", empty, &alive)
-				// find a way to resume afterwards with same distributor (fault tolerance)
+				_ = client.Call("BrokerComp.ClientDisconnect", empty, &alive)
 				return
 			case 's':
 				var empty Input
@@ -177,7 +204,6 @@ func distributor(p Params, c distributorChannels) {
 			if err != nil {
 				panic(err)
 			}
-			fmt.Println("ending")
 			c.events <- FinalTurnComplete{CompletedTurns: reply.Turns, Alive: getAliveCells(&reply.World, &p)}
 
 			pgmImage(&p, &reply.World, &c, &reply.Turns)
@@ -185,7 +211,6 @@ func distributor(p Params, c distributorChannels) {
 			c.ioCommand <- ioCheckIdle
 			<-c.ioIdle
 			c.events <- StateChange{reply.Turns, Quitting}
-
 			close(c.events)
 			return
 		}

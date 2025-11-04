@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"net/rpc"
 	"sync"
@@ -11,10 +12,16 @@ type BrokerComp struct {
 	workers      map[Data]*rpc.Client
 	mu           sync.Mutex
 	cond         sync.Cond
+	distributor  *rpc.Client
 	currentWorld [][]byte
 	turns        int
 	paused       bool
 	quit         bool
+	disconnected bool
+}
+
+type Paused struct {
+	Paused bool
 }
 
 type Data struct {
@@ -45,6 +52,15 @@ type WorkerOutput struct {
 type Output struct {
 	World [][]byte
 	Turns int
+}
+
+type Cell struct {
+	X, Y int
+}
+
+type CellsFlippedData struct {
+	Cells          []Cell
+	CompletedTurns int
 }
 
 func createWorld(width, height int) [][]byte {
@@ -84,7 +100,6 @@ func createChunk(world [][]byte, width, height, startY, endY int) [][]byte {
 		outputWorld = append(outputWorld, addRow(world, i, leftBlock, rightBlock))
 	}
 	outputWorld = append(outputWorld, addRow(world, bottomBlock, leftBlock, rightBlock))
-	fmt.Println(width, height, startY, endY, len(outputWorld), len(outputWorld[0]))
 	return outputWorld
 }
 
@@ -107,6 +122,26 @@ func (b *BrokerComp) QuitProgram(args *Input, reply *Output) error {
 	return nil
 }
 
+func (b *BrokerComp) ClientConnect(args string, reply *Paused) error {
+	distributor, er := rpc.Dial("tcp", args)
+	if er != nil {
+		log.Fatalf("Failed to connect to distributor: %v", er)
+	}
+	b.distributor = distributor
+	b.disconnected = false
+	if b.paused {
+		reply.Paused = true
+	} else {
+		reply.Paused = false
+	}
+	return nil
+}
+
+func (b *BrokerComp) ClientDisconnect(args *Input, reply *Output) error {
+	b.disconnected = true
+	return nil
+}
+
 func (b *BrokerComp) Process(args *Input, reply *Output) error {
 	// Assign work to the workers and rpc call it with client.Go(DistributingComp.Process)
 	workers := len(b.workers)
@@ -114,9 +149,14 @@ func (b *BrokerComp) Process(args *Input, reply *Output) error {
 	var argArray = make([]WorkerInput, workers)
 	var replyArray = make([]WorkerOutput, workers)
 	world := args.World
+	if b.currentWorld != nil {
+		world = b.currentWorld
+	}
+	x := b.turns
 
-	for k := 1; k <= args.Turns; k++ {
-		if b.quit {
+	for k := x; k <= args.Turns; k++ {
+		if b.quit || b.disconnected {
+			fmt.Println("Disconnected")
 			return nil
 		}
 
@@ -124,6 +164,11 @@ func (b *BrokerComp) Process(args *Input, reply *Output) error {
 		if b.paused {
 			for b.paused {
 				b.cond.Wait()
+			}
+
+			if b.disconnected || b.quit {
+				b.paused = false
+				return nil
 			}
 		}
 		b.mu.Unlock()
@@ -141,7 +186,6 @@ func (b *BrokerComp) Process(args *Input, reply *Output) error {
 				EndY = args.Height - 1
 			}
 
-			fmt.Println(StartY, EndY)
 			argArray[i] = WorkerInput{Read: createChunk(world, args.Width, args.Height, StartY, EndY), Width: args.Width, StartY: StartY, EndY: EndY}
 			replyArray[i] = WorkerOutput{}
 			count++
@@ -157,26 +201,33 @@ func (b *BrokerComp) Process(args *Input, reply *Output) error {
 			<-ch
 		}
 
+		//var flipped []Cell
 		for data, _ := range b.workers {
 			out := replyArray[data.Id]
 			startRow := out.StartRow
 			endRow := out.EndRow
 			chunkWorld := out.Write
-			fmt.Println("length:  ", len(chunkWorld), len(chunkWorld[0]))
-			fmt.Println(startRow, endRow)
 			for i := startRow; i <= endRow; i++ {
 				//fmt.Println(i)
 				for j := 0; j < len(chunkWorld[i-startRow]); j++ {
 					world[i][j] = chunkWorld[i-startRow][j]
+					//if world[i][j] == 255 {
+					//	flipped = append(flipped, Cell{X: i, Y: j})
+					//}
 				}
 			}
 		}
+		//var cellsFlippedData CellsFlippedData
+		//cellsFlippedData.Cells = flipped
+		//cellsFlippedData.CompletedTurns = b.turns
+		//var flipReply Output
+		//b.distributor.Call("DistributorComp.Flip", cellsFlippedData, &flipReply)
 		b.currentWorld = world
 		b.turns = k
 	}
 	reply.World = world // done all turns
 	reply.Turns = b.turns
-	b.turns = 0
+	b.turns = 1
 	b.currentWorld = nil
 	return nil
 }
@@ -214,9 +265,8 @@ func (b *BrokerComp) Unregister(args *Data, reply *Output) error {
 }
 
 func main() {
-	b := &BrokerComp{workers: make(map[Data]*rpc.Client)}
+	b := &BrokerComp{workers: make(map[Data]*rpc.Client), turns: 1}
 	b.cond = *sync.NewCond(&b.mu)
-
 	err := rpc.Register(b)
 	if err != nil {
 		panic(err)
@@ -232,15 +282,10 @@ func main() {
 	go rpc.Accept(listener)
 	for {
 		if b.quit {
-			fmt.Println(b.workers)
-			// send rpc to all workers saying quit
-			//for _, worker := range b.workers {
-			//	var reply Output
-			//	worker.Call("WorkerComp.QuitWorker", true, &reply)
-			//	if err != nil {
-			//		print("ERROR: ", err)
-			//	}
-			//}
+			var reply WorkerOutput
+			for _, worker := range b.workers {
+				worker.Call("WorkerComp.QuitWorker", true, &reply)
+			}
 			return
 		}
 	}

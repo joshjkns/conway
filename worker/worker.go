@@ -113,7 +113,7 @@ func (w *WorkerComp) GameOfLife(args *WorkerInput, reply *WorkerOutput) error {
 	return nil
 }
 
-func (w *WorkerComp) QuitWorker(args bool, repl *WorkerOutput) error {
+func (w *WorkerComp) QuitWorker(args *bool, repl *WorkerOutput) error {
 	w.quit = true
 	return nil
 }
@@ -125,7 +125,7 @@ func main() {
 		panic(err)
 	}
 
-	var portAddr = flag.String("port", ":8030", "port to listen on")
+	var portAddr = flag.String("ip", ":8030", "port to listen on")
 	var id = flag.Int("id", 0, "id of worker")
 	flag.Parse()
 
