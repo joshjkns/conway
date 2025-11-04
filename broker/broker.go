@@ -201,7 +201,7 @@ func (b *BrokerComp) Process(args *Input, reply *Output) error {
 			<-ch
 		}
 
-		//var flipped []Cell
+		var flipped []Cell
 		for data, _ := range b.workers {
 			out := replyArray[data.Id]
 			startRow := out.StartRow
@@ -211,15 +211,15 @@ func (b *BrokerComp) Process(args *Input, reply *Output) error {
 				//fmt.Println(i)
 				for j := 0; j < len(chunkWorld[i-startRow]); j++ {
 					world[i][j] = chunkWorld[i-startRow][j]
-					//if world[i][j] == 255 {
-					//	flipped = append(flipped, Cell{X: i, Y: j})
-					//}
+					if world[i][j] == 255 {
+						flipped = append(flipped, Cell{X: j, Y: i})
+					}
 				}
 			}
 		}
-		//var cellsFlippedData CellsFlippedData
-		//cellsFlippedData.Cells = flipped
-		//cellsFlippedData.CompletedTurns = b.turns
+		var cellsFlippedData CellsFlippedData
+		cellsFlippedData.Cells = flipped
+		cellsFlippedData.CompletedTurns = b.turns
 		//var flipReply Output
 		//b.distributor.Call("DistributorComp.Flip", cellsFlippedData, &flipReply)
 		b.currentWorld = world

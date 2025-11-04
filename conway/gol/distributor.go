@@ -96,15 +96,20 @@ func distributor(p Params, c distributorChannels) {
 	c.ioCommand <- ioInput // give us the world in bytes
 	c.ioFilename <- strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight)
 	world := createWorld(&p)
+	var flipped []util.Cell
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			world[y][x] = <-c.ioInput
+			if world[y][x] == 255 {
+				flipped = append(flipped, util.Cell{X: x, Y: y})
+			}
 		}
 	}
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
 
 	turn := 0
+	c.events <- CellsFlipped{Cells: flipped, CompletedTurns: turn}
 	c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
 	turn++ // turn is now
 
