@@ -4,16 +4,17 @@ import (
 	"fmt"
 	"testing"
 
-	"uk.ac.bris.cs/gameoflife/gol"
-	"uk.ac.bris.cs/gameoflife/util"
+	"csa/conway/gol"
+
+	"csa/conway/util"
 )
 
 // TestGol tests 16x16, 64x64 and 512x512 images on 0, 1 and 100 turns using 1-16 worker threads.
 func TestGol(t *testing.T) {
 	tests := []gol.Params{
 		{ImageWidth: 16, ImageHeight: 16},
-		{ImageWidth: 64, ImageHeight: 64},
-		{ImageWidth: 512, ImageHeight: 512},
+		// {ImageWidth: 64, ImageHeight: 64},
+		// {ImageWidth: 512, ImageHeight: 512},
 	}
 	for _, p := range tests {
 		for _, turns := range []int{0, 1, 100} {

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"uk.ac.bris.cs/gameoflife/util"
+	"csa/conway/util"
 )
 
 type ioChannels struct {

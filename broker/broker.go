@@ -1,301 +1,139 @@
 package main
 
 import (
+	"csa/conway/util"
+	"csa/stubs"
+	"flag"
 	"fmt"
-	"log"
 	"net"
 	"net/rpc"
 	"sync"
 )
 
-type BrokerComp struct {
-	workers      map[Data]*rpc.Client
-	mu           sync.Mutex
-	cond         sync.Cond
-	distributor  *rpc.Client
+type Broker struct{
+	workers map[stubs.Data]*rpc.Client
+	currentID	int
 	currentWorld [][]byte
-	turns        int
-	paused       bool
-	quit         bool
-	disconnected bool
+	currentTurns int
+	mu      sync.Mutex
+  cond    *sync.Cond
 }
 
-type Paused struct {
-	Paused bool
-}
-
-type Data struct {
-	Address string
-	Id      int
-}
-
-type Input struct {
-	World  [][]byte
-	Width  int
-	Height int
-	Turns  int
-}
-
-type WorkerInput struct {
-	Read   [][]byte
-	Width  int
-	StartY int
-	EndY   int
-}
-
-type WorkerOutput struct {
-	Write    [][]byte
-	StartRow int
-	EndRow   int
-}
-
-type Output struct {
-	World [][]byte
-	Turns int
-}
-
-type Cell struct {
-	X, Y int
-}
-
-type CellsFlippedData struct {
-	Cells          []Cell
-	CompletedTurns int
-}
-
-func createWorld(width, height int) [][]byte {
-	newWorld := make([][]byte, height)
-	for i := range newWorld {
-		newWorld[i] = make([]byte, width)
+func (b *Broker) Register(args stubs.WorkerInfo, reply *stubs.Confirmation) (err error) {
+	address := "localhost" + args.Port
+	worker, err := rpc.Dial("tcp", address)
+	if err != nil {
+		return err
 	}
-	return newWorld
-}
+	data := stubs.Data{Address: address, ID: b.currentID}
+	b.workers[data] = worker
 
-func constrainValue(value int, constraint int) int {
-	if value < 0 {
-		value += constraint
-	} else if value >= constraint {
-		value -= constraint
-	}
-	return value
-}
-
-func addRow(world [][]byte, row, left, right int) []byte {
-	var rowStore []byte
-	rowStore = append(rowStore, world[row][left])
-	rowStore = append(rowStore, world[row]...)
-	rowStore = append(rowStore, world[row][right])
-	return rowStore
-}
-
-func createChunk(world [][]byte, width, height, startY, endY int) [][]byte {
-	var outputWorld [][]byte
-	topBlock := constrainValue(startY-1, height)
-	bottomBlock := constrainValue(endY+1, height)
-	leftBlock := width - 1
-	rightBlock := 0
-	//fmt.Println(width, height, startY, endY)
-	outputWorld = append(outputWorld, addRow(world, topBlock, leftBlock, rightBlock))
-	for i := startY; i <= endY; i++ {
-		outputWorld = append(outputWorld, addRow(world, i, leftBlock, rightBlock))
-	}
-	outputWorld = append(outputWorld, addRow(world, bottomBlock, leftBlock, rightBlock))
-	return outputWorld
-}
-
-func (b *BrokerComp) TogglePaused(args bool, reply *Output) error {
-	// toggle paused in every worker
-	b.paused = args
-	b.cond.Broadcast()
+	reply.ID = b.currentID
+	fmt.Println("[Broker] - Registered worker ID: ", reply.ID, "on port ", args.Port)
+	b.currentID += 1
 	return nil
 }
 
-func (b *BrokerComp) GetCurrentState(args *Input, reply *Output) error {
-	// get state of all individual workers, reconstruct and return to the distributor
-	reply.World = b.currentWorld
-	reply.Turns = b.turns
-	return nil
-}
-
-func (b *BrokerComp) QuitProgram(args *Input, reply *Output) error {
-	b.quit = true
-	return nil
-}
-
-func (b *BrokerComp) ClientConnect(args string, reply *Paused) error {
-	distributor, er := rpc.Dial("tcp", args)
-	if er != nil {
-		log.Fatalf("Failed to connect to distributor: %v", er)
-	}
-	b.distributor = distributor
-	b.disconnected = false
-	if b.paused {
-		reply.Paused = true
-	} else {
-		reply.Paused = false
-	}
-	return nil
-}
-
-func (b *BrokerComp) ClientDisconnect(args *Input, reply *Output) error {
-	b.disconnected = true
-	return nil
-}
-
-func (b *BrokerComp) Process(args *Input, reply *Output) error {
-	// Assign work to the workers and rpc call it with client.Go(DistributingComp.Process)
+func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 	workers := len(b.workers)
-	var channels = make([]chan *rpc.Call, workers) // making done channels
-	var argArray = make([]WorkerInput, workers)
-	var replyArray = make([]WorkerOutput, workers)
+	
+	// making arrays to sync the workers
+	var channels = make([]chan *rpc.Call, workers)
+	var argArray = make([]stubs.ChunkInfo, workers)
+	var replyArray = make([]stubs.ChunkInfo, workers)
+
+	// set the world
 	var world = args.World
-	if b.currentWorld != nil {
-		fmt.Println("fagshdfvhesbgv")
-		world = b.currentWorld
-	} else {
-		b.currentWorld = createWorld(args.Width, args.Height)
-		for y := 0; y < args.Height; y++ {
-			for x := 0; x < args.Width; x++ {
-				b.currentWorld[y][x] = world[y][x]
+	b.currentWorld = stubs.CopyWorld(&world, args.Width, args.Height)
+
+	// split the data
+	rowsPerWorker := args.Height / workers
+	
+	// add all addresses(data) to an array
+	var dataArray = make([]stubs.Data, workers)
+	for data := range b.workers {
+		dataArray[data.ID] = data
+	}
+
+	// create all params for the call
+	for data := range b.workers {
+		i := data.ID
+
+		channels[i] = make(chan *rpc.Call, 1)
+
+		startY := i * rowsPerWorker
+		endY := startY + rowsPerWorker - 1
+		if i == workers - 1 {
+			endY = args.Height - 1
+		}
+		fmt.Println("STARTY ", startY, " ENDY ", endY, "HEIGHT ", (endY - startY + 1), " ROWS PER WORKER ", rowsPerWorker, " ARGS HEIGHT ", args.Height)
+
+		// make neighbours array and add left and right neighbours
+		leftNeighbour := stubs.ConstrainValue(data.ID - 1, workers)
+		rightNeighbour := stubs.ConstrainValue(data.ID + 1, workers)
+		neighbours := stubs.NeighbourPair{LeftNeighbour: dataArray[leftNeighbour], RightNeighbour: dataArray[rightNeighbour]}
+
+		argArray[i] = stubs.ChunkInfo{Chunk: stubs.CreateChunk(world, args.Width, (endY - startY + 1), startY, endY), StartRow: startY, EndRow: endY, Neighbours: neighbours, Turns: args.Turns}
+		replyArray[i] = stubs.ChunkInfo{}
+	}
+
+	// call function on all workers (they work together and do ALL moves before returning)
+	// - have to send neighbours addresses or rpc client stuff so they can call each other.
+	for data, worker := range b.workers {
+		go worker.Go("Worker.GameOfLife", argArray[data.ID], &replyArray[data.ID], channels[data.ID])
+	}
+
+	// check all channels are done
+	for _, call := range channels {
+		ch := call
+		<-ch
+	}
+
+	// put all chunks back together
+	for data := range b.workers {
+		reply := replyArray[data.ID]
+		startRow := reply.StartRow
+		endRow := reply.EndRow
+		chunkWorld := reply.Chunk
+
+		for i := startRow; i <= endRow; i++ {
+			for j := 0; j < args.Width; j++ {
+				world[i][j] = chunkWorld[i-startRow][j]
+				b.currentWorld[i][j] = world[i][j]
 			}
 		}
 	}
-	x := b.turns
-
-	for k := x; k <= args.Turns; k++ {
-		if b.quit || b.disconnected {
-			fmt.Println("Disconnected")
-			return nil
-		}
-
-		b.mu.Lock()
-		if b.paused {
-			for b.paused {
-				b.cond.Wait()
-			}
-
-			if b.disconnected || b.quit {
-				b.paused = false
-				return nil
-			}
-		}
-		b.mu.Unlock()
-
-		rowsPerWorker := args.Height / workers
-		count := 0
-
-		for data := range b.workers {
-			i := data.Id
-			channels[i] = make(chan *rpc.Call, 10)
-
-			StartY := i * rowsPerWorker
-			EndY := StartY + rowsPerWorker - 1
-			if count == workers-1 {
-				EndY = args.Height - 1
-			}
-
-			argArray[i] = WorkerInput{Read: createChunk(world, args.Width, args.Height, StartY, EndY), Width: args.Width, StartY: StartY, EndY: EndY}
-			replyArray[i] = WorkerOutput{}
-			count++
-		}
-
-		for data, worker := range b.workers {
-			go worker.Go("WorkerComp.GameOfLife", argArray[data.Id], &replyArray[data.Id], channels[data.Id])
-		}
-
-		// check all channels are done
-		for _, call := range channels {
-			ch := call
-			<-ch
-		}
-
-		var flipped []Cell
-		for data, _ := range b.workers {
-			out := replyArray[data.Id]
-			startRow := out.StartRow
-			endRow := out.EndRow
-			chunkWorld := out.Write
-			for i := startRow; i <= endRow; i++ {
-				//fmt.Println(i)
-				for j := 0; j < len(chunkWorld[i-startRow]); j++ {
-					world[i][j] = chunkWorld[i-startRow][j] // update world
-					if world[i][j] != b.currentWorld[i][j] {
-						fmt.Println("DIFFERENT")
-						flipped = append(flipped, Cell{X: j, Y: i})
-					}
-					b.currentWorld[i][j] = world[i][j]
-				}
-			}
-		}
-		var cellsFlippedData CellsFlippedData
-		cellsFlippedData.Cells = flipped
-		cellsFlippedData.CompletedTurns = b.turns
-		var flipReply Output
-		b.distributor.Call("DistributorComp.Flip", cellsFlippedData, &flipReply)
-		b.turns = k
-	}
-	reply.World = world // done all turns
-	reply.Turns = b.turns
-	b.turns = 1
+	reply.World = world
+	reply.Turns = args.Turns
+	b.currentTurns = 1
 	b.currentWorld = nil
 	return nil
 }
 
-func (b *BrokerComp) Register(args *Data, reply *Output) error {
-	client, err := rpc.Dial("tcp", args.Address)
-	if err != nil {
-		return err
-	}
-
-	data := Data{Address: args.Address, Id: args.Id}
-
-	b.mu.Lock()
-	b.workers[*args] = client
-	b.mu.Unlock()
-
-	fmt.Println("registered worker", data.Address, data.Id)
-	return nil
-}
-
-func (b *BrokerComp) Unregister(args *Data, reply *Output) error {
-	// unregister the distributor into the broker
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	client, ok := b.workers[*args]
-	if ok {
-		client.Close()
-		delete(b.workers, *args)
-		fmt.Println("unregistered worker", args.Address)
-	} else {
-		fmt.Println("no worker found", args.Address)
-	}
+// need to stop all workers, get all their return states and then getalivecells of it and reply with it
+func (b *Broker) Consoldidate(args bool, reply *[]util.Cell) (err error) {
 	return nil
 }
 
 func main() {
-	b := &BrokerComp{workers: make(map[Data]*rpc.Client), turns: 1}
-	b.cond = *sync.NewCond(&b.mu)
-	err := rpc.Register(b)
-	if err != nil {
-		panic(err)
-	}
+	// making new broker
+	b := &Broker{workers: make(map[stubs.Data]*rpc.Client), currentID: 0}
+	b.cond = sync.NewCond(&b.mu)
+	rpc.Register(b)
 
-	listener, err := net.Listen("tcp", ":8031")
+	// args
+	port := flag.String("port", ":8029", "Port to listen on")
+	flag.Parse()
+
+	// listen
+	listener, err := net.Listen("tcp", *port)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("[Broker] - Listening on port ", *port)
 	defer listener.Close()
 
-	fmt.Println("[Broker] RPC connected on port 8031")
-	go rpc.Accept(listener)
 	for {
-		if b.quit {
-			var reply WorkerOutput
-			for _, worker := range b.workers {
-				worker.Call("WorkerComp.QuitWorker", true, &reply)
-			}
-			return
-		}
+		rpc.Accept(listener)
 	}
 }

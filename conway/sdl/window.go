@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"unsafe"
 
+	"csa/conway/util"
+
 	"github.com/veandco/go-sdl2/sdl"
-	"uk.ac.bris.cs/gameoflife/util"
 )
 
 type Window struct {

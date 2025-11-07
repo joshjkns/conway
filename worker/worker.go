@@ -1,96 +1,35 @@
 package main
 
 import (
+	"csa/stubs"
 	"flag"
 	"fmt"
 	"net"
 	"net/rpc"
 )
 
-type WorkerInput struct {
-	Read   [][]byte
-	Width  int
-	StartY int
-	EndY   int
-}
-
-type WorkerOutput struct {
-	Write    [][]byte
-	StartRow int
-	EndRow   int
-}
-
-type Data struct {
-	Address string
-	Id      int
-}
-type WorkerComp struct {
-	quit bool
+type Worker struct{
+	id int
+	broker *rpc.Client
+	chunk [][]byte
+	width int
+	height int
+	startRow int
+	endRow int
+	neighbours stubs.NeighbourPair
+	ready chan bool
 }
 
 var offsets = [][]int{{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}}
 
-//func stripHalo(world [][]byte) [][]byte {
-//	height := len(world)
-//	width := len(world[0])
-//	out := make([][]byte, height-2)
-//	for y := 1; y < height-1; y++ {
-//		out = append(out, world[y][1:width-1])
-//	}
-//	return out
-//}
-
-func createWorldWorker(width, height int) [][]byte {
-	newWorld := make([][]byte, height)
-	for i := range newWorld {
-		newWorld[i] = make([]byte, width)
-	}
-	return newWorld
-}
-
-func incrementGolWorker(section *[][]byte, width, height, startX, startY int) [][]byte {
-	//fmt.Println(width, height, startX, startY, len(*section), len((*section)[0]))
-	newWorld := createWorldWorker(width, height) // actual part we are updating
-	//fmt.Println(len(*section), len((*section)[0]), width, height)
-	for y := 1; y < len(*section)-1; y++ { // only checks actual part
-		for x := 1; x < len((*section)[0])-1; x++ {
-			liveNeighbours := countLiveNeighboursWorker(section, x, y, width, height)
-			if (*section)[y][x] == 255 { // current cell is alive
-				if liveNeighbours < 2 || liveNeighbours > 3 {
-					newWorld[y-1][x-1] = 0
-				} else {
-					newWorld[y-1][x-1] = 255
-				}
-			} else { // current cell is dead
-				if liveNeighbours == 3 {
-					newWorld[y-1][x-1] = 255
-				} else {
-					newWorld[y-1][x-1] = 0
-				}
-			}
-		}
-	}
-	return newWorld
-}
-
-func constrainValueWorker(value int, constraint int) int {
-	if value < 0 {
-		value += constraint
-	} else if value >= constraint {
-		value -= constraint
-	}
-	return value
-}
-
-func countLiveNeighboursWorker(world *[][]byte, x int, y int, width, height int) int {
+func countLiveNeighbours(world *[][]byte, x, y, width, height int) int {
 	count := 0
 
 	for _, offset := range offsets {
 		xNeighbour := x + offset[0]
 		yNeighbour := y + offset[1]
-		//xNeighbour = constrainValueWorker(xNeighbour, width)
-		//yNeighbour = constrainValueWorker(yNeighbour, height)
-		//fmt.Println(x, y, width, height, xNeighbour, yNeighbour)
+		xNeighbour = stubs.ConstrainValue(xNeighbour, width)
+		yNeighbour = stubs.ConstrainValue(yNeighbour, height)
 		if (*world)[yNeighbour][xNeighbour] == 255 { // alive
 			count += 1
 		}
@@ -98,52 +37,146 @@ func countLiveNeighboursWorker(world *[][]byte, x int, y int, width, height int)
 	return count
 }
 
-func (w *WorkerComp) GameOfLife(args *WorkerInput, reply *WorkerOutput) error {
-	width := args.Width
-	startRow := args.StartY
-	endRow := args.EndY
-	height := (endRow + 1) - startRow
-	worldInput := (*args).Read
+func increment(chunk *[][]byte, width, height int) [][]byte {
+	newWorld := stubs.CreateWorld(width, height) // actual part we are updating
+	for y := 1; y < len(*chunk)-1; y++ { // only checks actual part
+		for x := 0; x < width; x++ {
+			liveNeighbours := countLiveNeighbours(chunk, x, y, width, height)
+			if (*chunk)[y][x] == 255 { // current cell is alive
+				if liveNeighbours < 2 || liveNeighbours > 3 {
+					newWorld[y-1][x] = 0
+				} else {
+					newWorld[y-1][x] = 255
+				}
+			} else { // current cell is dead
+				if liveNeighbours == 3 {
+					newWorld[y-1][x] = 255
+				} else {
+					newWorld[y-1][x] = 0
+				}
+			}
+		}
+	}
+	return newWorld
+}
 
-	newWorld := incrementGolWorker(&worldInput, width, height, 0, startRow)
-	fmt.Println(len(newWorld))
-	reply.Write = newWorld
-	reply.StartRow = startRow
-	reply.EndRow = endRow
+
+func addHalo(chunk [][]byte, width, height int, pos stubs.Position, address string) [][]byte {
+	neighbour, err := rpc.Dial("tcp", address)
+	if err != nil {
+			panic(err)
+	}
+	defer neighbour.Close()
+
+	var halo stubs.Halo
+	if err := neighbour.Call("Worker.SendHalo", pos, &halo); err != nil {
+			panic(err)
+	}
+
+	// create a new world with one extra row for the new halo
+	res := stubs.CreateWorld(width, height+1)
+	switch pos {
+	case stubs.Top:
+		copy(res[0], halo.Row)
+		copy(res[1:], chunk)
+	case stubs.Bottom:
+		copy(res[:height], chunk)
+		copy(res[height], halo.Row)
+	}
+	return res
+}
+
+func (w *Worker) SendHalo(pos stubs.Position, reply *stubs.Halo) error {
+    if pos == stubs.Top {
+        reply.Row = w.chunk[len(w.chunk)-1] // bottom row
+    } else {
+        reply.Row = w.chunk[0] // top row
+    }
+    return nil
+}
+
+func sync(args stubs.Data) {
+	fmt.Println("SYNC")
+	rightNeighbour, err := rpc.Dial("tcp", args.Address)
+	if err != nil {
+		panic(err)
+	}
+	var resp stubs.Response
+	rightNeighbour.Go("Worker.Ready", true, &resp, nil)
+}
+
+func (w *Worker) Ready(args bool, reply *stubs.Response) (err error) {
+	fmt.Println("READY")
+	w.ready <- true
+	reply.Resp = true
 	return nil
 }
 
-func (w *WorkerComp) QuitWorker(args *bool, repl *WorkerOutput) error {
-	w.quit = true
+func (w *Worker) GameOfLife(args stubs.ChunkInfo, reply *stubs.ChunkInfo) (err error) {
+	w.chunk = stubs.CopyWorld(&args.Chunk, len(args.Chunk[0]), len(args.Chunk))
+	w.width = len(w.chunk[0])
+	w.height = len((w.chunk))
+	w.startRow = args.StartRow
+	w.endRow = args.EndRow
+	w.neighbours = args.Neighbours
+
+	// add halos from neighbours
+	for i := 1; i <= args.Turns; i++ {
+    // create a copy of the base chunk each turn
+    current := w.chunk
+
+    // get top and bottom halos each turn
+    withTop := addHalo(current, w.width, w.height, stubs.Top, w.neighbours.LeftNeighbour.Address)
+    withBoth := addHalo(withTop, w.width, w.height+1, stubs.Bottom, w.neighbours.RightNeighbour.Address)
+
+    newChunk := increment(&withBoth, w.width, w.height)
+
+    w.chunk = newChunk
+
+    sync(w.neighbours.RightNeighbour)
+    <-w.ready
+}
+	
+	reply.Chunk = w.chunk
 	return nil
 }
 
 func main() {
-	w := new(WorkerComp)
-	err := rpc.Register(w)
-	if err != nil {
-		panic(err)
-	}
+	// making new Worker
+	w := &Worker{ready: make(chan bool)}
+	rpc.Register(w)
 
-	var portAddr = flag.String("ip", ":8030", "port to listen on")
-	var id = flag.Int("id", 0, "id of worker")
+	// args
+	port := flag.String("port", ":8030", "Port to listen on.")
 	flag.Parse()
 
-	listener, err := net.Listen("tcp", *portAddr)
+	// listen
+	listener, err := net.Listen("tcp", *port)
 	if err != nil {
 		panic(err)
 	}
 	defer listener.Close()
-	fmt.Println("[Worker] RPC connected on port", *portAddr)
+	fmt.Println("[Worker] - Listening on port ", *port)
 
-	client, _ := rpc.Dial("tcp", "localhost:8031")
-	inputData := &Data{Address: "localhost" + *portAddr, Id: *id}
-	outputData := new(WorkerOutput)
-	client.Call("BrokerComp.Register", inputData, outputData)
-	go rpc.Accept(listener)
+	// dial the broker
+	broker, err := rpc.Dial("tcp", "localhost:8029")
+	if err != nil {
+		panic(err)
+	}
+	w.broker = broker
+	fmt.Println("[Worker] - Dialed broker successfully.")
+
+	// define args and reply for the registration
+	args := stubs.WorkerInfo{Port: *port}
+	reply := stubs.Confirmation{}
+
+	// register the worker with the broker (ids will be sorted on the broker side)
+	broker.Call("Broker.Register", args, &reply)
+
+	// set the workers id locally
+	w.id = reply.ID
+
 	for {
-		if w.quit {
-			return
-		}
+		rpc.Accept(listener)
 	}
 }

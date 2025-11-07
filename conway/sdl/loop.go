@@ -4,9 +4,10 @@ import (
 	"log"
 	"time"
 
+	"csa/conway/gol"
+	"csa/conway/util"
+
 	"github.com/veandco/go-sdl2/sdl"
-	"uk.ac.bris.cs/gameoflife/gol"
-	"uk.ac.bris.cs/gameoflife/util"
 )
 
 const FPS = 60

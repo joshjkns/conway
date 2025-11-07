@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"uk.ac.bris.cs/gameoflife/gol"
+	"csa/conway/gol"
 )
 
 // Pgm tests 16x16, 64x64 and 512x512 image output files on 0, 1 and 100 turns using 1-16 worker threads.

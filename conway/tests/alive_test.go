@@ -1,15 +1,14 @@
 package tests
 
 import (
+	"csa/conway/gol"
+	"csa/conway/util"
 	"encoding/csv"
 	"fmt"
 	"os"
 	"strconv"
 	"testing"
 	"time"
-
-	"uk.ac.bris.cs/gameoflife/gol"
-	"uk.ac.bris.cs/gameoflife/util"
 )
 
 // TestAlive will automatically check the 512x512 cell counts for the first 5 messages.

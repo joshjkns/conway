@@ -3,7 +3,7 @@ package tests
 import (
 	"testing"
 
-	"uk.ac.bris.cs/gameoflife/gol"
+	"csa/conway/gol"
 )
 
 // TestSdl tests for correct visualisation in the SDL window

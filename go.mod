@@ -1,4 +1,4 @@
-module uk.ac.bris.cs/gameoflife
+module csa
 
 go 1.17
 

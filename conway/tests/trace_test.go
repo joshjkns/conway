@@ -5,8 +5,8 @@ import (
 	"runtime/trace"
 	"testing"
 
-	"uk.ac.bris.cs/gameoflife/gol"
-	"uk.ac.bris.cs/gameoflife/util"
+	"csa/conway/gol"
+	"csa/conway/util"
 )
 
 // TestTrace is a special test to be used to generate traces - not a real test

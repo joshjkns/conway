@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"uk.ac.bris.cs/gameoflife/gol"
-	"uk.ac.bris.cs/gameoflife/util"
+	"csa/conway/gol"
+	"csa/conway/util"
 )
 
 // TestKeyboard tests key presses and events
