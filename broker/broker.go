@@ -1,7 +1,6 @@
 package main
 
 import (
-	"csa/conway/util"
 	"csa/stubs"
 	"flag"
 	"fmt"
@@ -17,6 +16,7 @@ type Broker struct{
 	currentTurns int
 	mu      sync.Mutex
   cond    *sync.Cond
+	ready int
 }
 
 func (b *Broker) Register(args stubs.WorkerInfo, reply *stubs.Confirmation) (err error) {
@@ -36,6 +36,9 @@ func (b *Broker) Register(args stubs.WorkerInfo, reply *stubs.Confirmation) (err
 
 func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 	workers := len(b.workers)
+	b.mu.Lock()
+	b.ready = 0
+	b.mu.Unlock()
 	
 	// making arrays to sync the workers
 	var channels = make([]chan *rpc.Call, workers)
@@ -110,8 +113,24 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 	return nil
 }
 
-// need to stop all workers, get all their return states and then getalivecells of it and reply with it
-func (b *Broker) Consoldidate(args bool, reply *[]util.Cell) (err error) {
+
+func (b *Broker) WaitForEveryone(args stubs.WaitArgs, reply *stubs.Response) (err error) {
+	b.mu.Lock()
+	b.ready += 1
+	fmt.Println("[Broker] Worker ", args.ID, "is ready! Total: ", b.ready)
+
+	if b.ready == len(b.workers) {
+		b.ready = 0
+		b.cond.Broadcast()
+	} else {
+		for b.ready != 0 { 
+			b.cond.Wait()
+		}
+	}
+	b.mu.Unlock()
+
+	reply.Resp = true
+
 	return nil
 }
 
@@ -133,7 +152,7 @@ func main() {
 	fmt.Println("[Broker] - Listening on port ", *port)
 	defer listener.Close()
 
-	for {
-		rpc.Accept(listener)
-	}
+	go rpc.Accept(listener)
+
+	select{}
 }

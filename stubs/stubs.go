@@ -11,6 +11,11 @@ const (
 	Bottom
 )
 
+type WaitArgs struct {
+	ID int
+	Turn int
+}
+
 type Halo struct {
 	Row []byte
 }

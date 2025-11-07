@@ -3,7 +3,6 @@ package gol
 import (
 	"csa/conway/util"
 	"csa/stubs"
-	"fmt"
 	"net/rpc"
 	"strconv"
 	"time"
@@ -60,7 +59,6 @@ func distributor(p Params, c distributorChannels) {
 
 	// Read in the world
 	initialRead(&world, &flipped, c, p.ImageWidth, p.ImageHeight)
-	fmt.Println(world)
 
 	// Check it is idle (done with sending)
 	c.ioCommand <- ioCheckIdle
@@ -117,13 +115,14 @@ func distributor(p Params, c distributorChannels) {
 			switch kp {
 			}
 		case <- done:
-			c.events <- FinalTurnComplete{CompletedTurns: reply.Turns, Alive: stubs.GetAliveCells(&reply.World)}
-			fmt.Println(&reply.World)
+			c.events <- FinalTurnComplete{CompletedTurns: p.Turns, Alive: stubs.GetAliveCells(&reply.World)}
 
 			// save pgm image
 			pgmImage(&p, &reply.World, &c, &reply.Turns)
 
-			// Close the events channel and end the distributor
+			c.ioCommand <- ioCheckIdle
+			<-c.ioIdle
+			c.events <- StateChange{reply.Turns, Quitting}
 			close(c.events)
 			return
 		}
