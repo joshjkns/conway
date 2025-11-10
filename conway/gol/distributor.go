@@ -21,6 +21,8 @@ type CellsFlippedData struct {
 
 type PausedStruct struct {
 	Paused bool
+	Started bool
+	Turn int
 }
 
 type Input struct {
@@ -94,6 +96,23 @@ func (d *DistributorComp) Flip(args CellsFlippedData, reply *Output) error {
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
+	listener, _ := net.Listen("tcp", ":8025")
+	rpc.Register(&DistributorComp{})
+	defer listener.Close()
+	go rpc.Accept(listener)
+
+	client, err := rpc.Dial("tcp", "localhost:8031")
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+
+	turn := 0
+	var isPaused PausedStruct
+	_ = client.Call("BrokerComp.ClientConnect", "localhost:8025", &isPaused)
+	paused = isPaused.Paused
+	turn = isPaused.Turn
+
 	channels = c
 	c.ioCommand <- ioInput // give us the world in bytes
 	c.ioFilename <- strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight)
@@ -110,21 +129,10 @@ func distributor(p Params, c distributorChannels) {
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
 
-	turn := 0
-	c.events <- CellsFlipped{Cells: flipped, CompletedTurns: turn}
-	c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
-	turn++ // turn is now
-
-	listener, _ := net.Listen("tcp", ":8025")
-	rpc.Register(&DistributorComp{})
-	defer listener.Close()
-	go rpc.Accept(listener)
-
-	client, err := rpc.Dial("tcp", "localhost:8031")
-	if err != nil {
-		panic(err)
+	if isPaused.Started {
+		c.events <- CellsFlipped{Cells: flipped, CompletedTurns: turn}
 	}
-	defer client.Close()
+	c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
 
 	args := Input{world, p.ImageHeight, p.ImageWidth, p.Turns}
 	var reply Output
@@ -132,14 +140,8 @@ func distributor(p Params, c distributorChannels) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	done := make(chan *rpc.Call, 1)
-	var isPaused PausedStruct
-	_ = client.Call("BrokerComp.ClientConnect", "localhost:8025", &isPaused)
-	paused = isPaused.Paused
 
-	go client.Go("BrokerComp.Process", args, &reply, done)
-	if err != nil {
-		panic(err)
-	}
+	client.Go("BrokerComp.Process", args, &reply, done)
 	//fmt.Println("WORLD : ", &reply.World, len(reply.World))
 
 	for {
@@ -152,7 +154,6 @@ func distributor(p Params, c distributorChannels) {
 				if err != nil {
 					panic(err)
 				}
-				fmt.Println("ticker")
 				aliveCells := getAliveCells(&alive.World, &p)
 				c.events <- AliveCellsCount{CompletedTurns: alive.Turns, CellsCount: len(aliveCells)}
 			}
@@ -166,6 +167,7 @@ func distributor(p Params, c distributorChannels) {
 				if err != nil {
 					panic(err)
 				}
+				pgmImage(&p, &alive.World, &c, &alive.Turns)
 				c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Quitting}
 				_ = client.Call("BrokerComp.ClientDisconnect", empty, &alive)
 				return
@@ -201,7 +203,7 @@ func distributor(p Params, c distributorChannels) {
 					c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Executing}
 				} else {
 					paused = true
-					err = client.Call("BrokerComp.TogglePaused", true, &alive)
+					_ = client.Call("BrokerComp.TogglePaused", true, &alive)
 					err = client.Call("BrokerComp.GetCurrentState", empty, &alive)
 					c.events <- StateChange{CompletedTurns: alive.Turns, NewState: Paused}
 					fmt.Println(alive.Turns)
