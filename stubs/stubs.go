@@ -122,8 +122,8 @@ func CreateChunk(world [][]byte, width, height, startY, endY int) [][]byte {
 func AddHalos(world, chunk [][]byte, width, height, startY, endY int) [][]byte {
 	res := CreateWorld(width, height + 2)
 
-	topIndex := ConstrainValue(startY - 1, height)
-	bottomIndex := ConstrainValue(endY + 1, height)
+	topIndex := ConstrainValue(startY - 1, len(world))
+	bottomIndex := ConstrainValue(endY + 1, len(world))
 
 	copy(res[0], world[topIndex])
 

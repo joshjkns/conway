@@ -134,6 +134,7 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 
 			chunk := stubs.CreateChunk(world, args.Width, (endY - startY + 1), startY, endY)
 			haloedChunk := stubs.AddHalos(b.currentWorld, chunk, args.Width, (endY - startY + 1), startY, endY)
+			fmt.Println("HEIGHT OF CHUNK: ", len(chunk), " OF HALOEDCHUNK: ", len(haloedChunk))
 
 			argArray[i] = stubs.ChunkInfo{Chunk: haloedChunk, StartRow: startY, EndRow: endY}
 			replyArray[i] = stubs.ChunkInfo{}
@@ -184,27 +185,6 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 	reply.Turns = args.Turns
 	b.currentTurns = 1
 	b.currentWorld = nil
-	return nil
-}
-
-
-func (b *Broker) WaitForEveryone(args stubs.WaitArgs, reply *stubs.Response) (err error) {
-	b.mu.Lock()
-	b.ready += 1
-	fmt.Println("[Broker] Worker ", args.ID, "is ready! Total: ", b.ready)
-
-	if b.ready == len(b.workers) {
-		b.ready = 0
-		b.cond.Broadcast()
-	} else {
-		for b.ready != 0 { 
-			b.cond.Wait()
-		}
-	}
-	b.mu.Unlock()
-
-	reply.Resp = true
-
 	return nil
 }
 

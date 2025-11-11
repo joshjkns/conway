@@ -67,19 +67,18 @@ func (w *Worker) Quit(args bool, reply *stubs.Response) (err error) {
 }
 
 func (w *Worker) GameOfLife(args stubs.ChunkInfo, reply *stubs.ChunkInfo) (err error) {
-	w.chunk = stubs.CopyWorld(&args.Chunk, len(args.Chunk[0]), len(args.Chunk))
-	w.width = len(w.chunk[0])
-	w.height = len((w.chunk))
+	w.width = len(args.Chunk[0])
+	w.height = len((args.Chunk))
 	w.startRow = args.StartRow
 	w.endRow = args.EndRow
 
 	current := stubs.CopyWorld(&args.Chunk, w.width, w.height)
 
+	newChunk := increment(&current, w.width, len(current))
+
 	w.mu.Lock()
 	w.chunk = stubs.CopyWorld(&current, w.width, w.height)
 	w.mu.Unlock()
-
-	newChunk := increment(&current, w.width, len(current))
 
 	current = newChunk
 	
