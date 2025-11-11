@@ -66,10 +66,8 @@ func (w *Worker) Quit(args bool, reply *stubs.Response) (err error) {
 
 func worker(current, result *[][]byte, width, height int, jobs <-chan stubs.Pair, wg *sync.WaitGroup) {
 	for j := range jobs {
-		func() {
 			increment(current, result, width, height, j.StartRow, j.EndRow)
-			defer wg.Done()
-		}()
+			wg.Done()
 	}
 }
 
@@ -79,15 +77,13 @@ func (w *Worker) GameOfLife(args stubs.ChunkInfo, reply *stubs.ChunkInfo) (err e
 	w.startRow = args.StartRow
 	w.endRow = args.EndRow
 
-	current := stubs.CopyWorld(&args.Chunk, w.width, w.height)
-
 	res := stubs.CreateWorld(w.width, w.height - 2)
 
 	jobs := make(chan stubs.Pair, w.height)
 	var wg sync.WaitGroup
 
 	for i := 0; i < args.Threads; i++ {
-		go worker(&current, &res, w.width, w.height, jobs, &wg)
+		go worker(&args.Chunk, &res, w.width, w.height, jobs, &wg)
 	}
 
 	chunkHeight := (w.height - 2) / args.Threads
@@ -102,10 +98,8 @@ func (w *Worker) GameOfLife(args stubs.ChunkInfo, reply *stubs.ChunkInfo) (err e
 	}
 
 	wg.Wait()
-
-	current = res
 	
-	reply.Chunk = current
+	reply.Chunk = res
 	reply.StartRow = w.startRow
 	reply.EndRow = w.endRow
 	return nil
