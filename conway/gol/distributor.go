@@ -127,7 +127,7 @@ func distributor(p Params, c distributorChannels) {
 	c.events <- StateChange{CompletedTurns: 0, NewState: Executing}
 
 	// rpc call args
-	args := stubs.WorldInfo{World: world, Width: p.ImageWidth, Height: p.ImageHeight, Turns: p.Turns, CurrentTurns: 0}
+	args := stubs.WorldInfo{World: world, Width: p.ImageWidth, Height: p.ImageHeight, Turns: p.Turns, CurrentTurns: 0, Threads: p.Threads}
 	reply := stubs.WorldInfo{}
 
 	// create ticker

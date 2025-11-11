@@ -38,32 +38,39 @@ func countLiveNeighbours(world *[][]byte, x, y, width, height int) int {
 	return count
 }
 
-func increment(chunk *[][]byte, width, height int) [][]byte {
-	newWorld := stubs.CreateWorld(width, height) // actual part we are updating
+func increment(chunk, result *[][]byte, width, height, startRow, endRow int) {
 	for y := 1; y < len(*chunk)-1; y++ { // only checks actual part
 		for x := 0; x < width; x++ {
 			liveNeighbours := countLiveNeighbours(chunk, x, y, width, len(*chunk))
 			if (*chunk)[y][x] == 255 { // current cell is alive
 				if liveNeighbours < 2 || liveNeighbours > 3 {
-					newWorld[y-1][x] = 0
+					(*result)[y-1][x] = 0
 				} else {
-					newWorld[y-1][x] = 255
+					(*result)[y-1][x] = 255
 				}
 			} else { // current cell is dead
 				if liveNeighbours == 3 {
-					newWorld[y-1][x] = 255
+					(*result)[y-1][x] = 255
 				} else {
-					newWorld[y-1][x] = 0
+					(*result)[y-1][x] = 0
 				}
 			}
 		}
 	}
-	return newWorld
 }
 
 func (w *Worker) Quit(args bool, reply *stubs.Response) (err error) {
 	w.quit = true
 	return nil
+}
+
+func worker(current, result *[][]byte, width, height int, jobs <-chan stubs.Pair, wg *sync.WaitGroup) {
+	for j := range jobs {
+		func() {
+			increment(current, result, width, height, j.StartRow, j.EndRow)
+			defer wg.Done()
+		}()
+	}
 }
 
 func (w *Worker) GameOfLife(args stubs.ChunkInfo, reply *stubs.ChunkInfo) (err error) {
@@ -74,13 +81,29 @@ func (w *Worker) GameOfLife(args stubs.ChunkInfo, reply *stubs.ChunkInfo) (err e
 
 	current := stubs.CopyWorld(&args.Chunk, w.width, w.height)
 
-	newChunk := increment(&current, w.width, len(current))
+	res := stubs.CreateWorld(w.width, w.height - 2)
 
-	w.mu.Lock()
-	w.chunk = stubs.CopyWorld(&current, w.width, w.height)
-	w.mu.Unlock()
+	jobs := make(chan stubs.Pair, w.height)
+	var wg sync.WaitGroup
 
-	current = newChunk
+	for i := 0; i < args.Threads; i++ {
+		go worker(&current, &res, w.width, w.height, jobs, &wg)
+	}
+
+	chunkHeight := (w.height - 2) / args.Threads
+	for j := 0; j < args.Threads; j++ {
+		startRow := j * chunkHeight + 1
+		endRow := startRow + chunkHeight - 1
+		if j == args.Threads-1 {
+			endRow = w.height - 2
+		}
+		wg.Add(1)
+		jobs <- stubs.Pair{StartRow: startRow, EndRow: endRow}
+	}
+
+	wg.Wait()
+
+	current = res
 	
 	reply.Chunk = current
 	reply.StartRow = w.startRow

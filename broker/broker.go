@@ -134,9 +134,8 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 
 			chunk := stubs.CreateChunk(world, args.Width, (endY - startY + 1), startY, endY)
 			haloedChunk := stubs.AddHalos(b.currentWorld, chunk, args.Width, (endY - startY + 1), startY, endY)
-			fmt.Println("HEIGHT OF CHUNK: ", len(chunk), " OF HALOEDCHUNK: ", len(haloedChunk))
 
-			argArray[i] = stubs.ChunkInfo{Chunk: haloedChunk, StartRow: startY, EndRow: endY}
+			argArray[i] = stubs.ChunkInfo{Chunk: haloedChunk, StartRow: startY, EndRow: endY, Threads: args.Threads}
 			replyArray[i] = stubs.ChunkInfo{}
 		}
 

@@ -11,6 +11,11 @@ const (
 	Bottom
 )
 
+type Pair struct {
+	StartRow int
+	EndRow int
+}
+
 type WaitArgs struct {
 	ID int
 	Turn int
@@ -48,6 +53,7 @@ type WorldInfo struct {
 	Turns int
 	CurrentTurns int
 	Paused bool
+	Threads int
 }
 
 type NeighbourPair struct {
@@ -61,6 +67,7 @@ type ChunkInfo struct {
 	EndRow int
 	Neighbours NeighbourPair
 	Turns int
+	Threads int
 }
 
 type CellsFlippedData struct {
