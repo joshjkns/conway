@@ -3,12 +3,16 @@ package gol
 import (
 	"csa/conway/util"
 	"csa/stubs"
+	"fmt"
+	"net"
 	"net/rpc"
 	"strconv"
 	"time"
 )
 
-type Distributor struct{}
+type Distributor struct{
+	channels distributorChannels
+}
 
 type distributorChannels struct {
 	events     chan<- Event
@@ -19,6 +23,8 @@ type distributorChannels struct {
 	ioInput    <-chan uint8
 	keyPresses <-chan rune
 }
+
+var channels distributorChannels
 
 func initialRead(world* [][]byte, flipped* []util.Cell, c distributorChannels, w, h int) {
 	for y := 0; y < h; y++ {
@@ -48,7 +54,15 @@ func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
 
 }
 
+func (d *Distributor) Flip(args stubs.CellsFlippedData, reply *stubs.Response) (err error) {
+	reply.Resp = true
+	channels.events <- CellsFlipped{Cells: args.CellsFlipped, CompletedTurns: args.CompletedTurns}
+	channels.events <- TurnComplete{CompletedTurns: args.CompletedTurns}
+	return nil
+}
+
 func distributor(p Params, c distributorChannels) {
+	var paused bool
 	// Create the world and flipped cell slice
 	world := stubs.CreateWorld(p.ImageWidth, p.ImageHeight)
 	var flipped []util.Cell
@@ -64,22 +78,24 @@ func distributor(p Params, c distributorChannels) {
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
 
-	// // args
-	// port := flag.String("port", ":8020", "Port to listen on.")
-	// flag.Parse()
+	// args
+	ipPort := "localhost:8020"
 
-	// // listen on port
-	// listener, err := net.Listen("tcp", *port)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Println("[Distributor] - Listening on port ", *port)
-	// defer listener.Close()
-	// go rpc.Accept(listener)
+	// listen on port
+	listener, err := net.Listen("tcp", ipPort)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("[Distributor] - Listening on port ", ipPort)
+	defer listener.Close()
+	
+	go rpc.Accept(listener)
 
-	// // making new Distributor
-	// d := &Distributor{}
-	// rpc.Register(d)
+	// making new Distributor
+	d := &Distributor{}
+	rpc.Register(d)
+
+	channels = c
 
 	// dial the broker
 	broker, err := rpc.Dial("tcp", "localhost:8029")
@@ -88,13 +104,30 @@ func distributor(p Params, c distributorChannels) {
 	}
 	// fmt.Println("[Distributor] - Dialed broker successfully.")
 	defer broker.Close()
+	// response is if its been used before - true is yes there is a state, false is no there isnt a state
+	var stateResponse stubs.Response
+	broker.Call("Broker.RegisterDistributor", &stubs.DistributorInfo{Address: ipPort}, &stateResponse)
 
 	// begin logic
-	c.events <- CellsFlipped{Cells: flipped, CompletedTurns: 0}
+	if !stateResponse.Resp {
+		c.events <- CellsFlipped{Cells: flipped, CompletedTurns: 0}
+	} else {
+		var initialReply stubs.WorldInfo
+		broker.Call("Broker.Consolidate", true, &initialReply)
+		// turn := initialReply.CurrentTurns
+		c.events <- CellsFlipped{Cells: stubs.GetAliveCells(&initialReply.World), CompletedTurns: initialReply.CurrentTurns}
+		if initialReply.Paused {
+			paused = true
+			// c.events <- StateChange{CompletedTurns: turn, NewState: Paused}
+		} else {
+			paused = false
+			// c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
+		}
+	}
 	c.events <- StateChange{CompletedTurns: 0, NewState: Executing}
 
 	// rpc call args
-	args := stubs.WorldInfo{World: world, Width: p.ImageWidth, Height: p.ImageHeight, Turns: p.Turns, CurrentTurns: 1}
+	args := stubs.WorldInfo{World: world, Width: p.ImageWidth, Height: p.ImageHeight, Turns: p.Turns, CurrentTurns: 0}
 	reply := stubs.WorldInfo{}
 
 	// create ticker
@@ -108,14 +141,48 @@ func distributor(p Params, c distributorChannels) {
 	for {
 		select {
 		case <- ticker.C:
-			var tickerReply []util.Cell
-			broker.Call("Broker.Consoldidate", true, &tickerReply)
-
+			var tickerReply stubs.WorldInfo
+			if !paused {
+				broker.Call("Broker.Consolidate", true, &tickerReply)
+				aliveCells := stubs.GetAliveCells(&tickerReply.World)
+				c.events <- AliveCellsCount{CompletedTurns: tickerReply.CurrentTurns, CellsCount: len(aliveCells)}
+			}
 		case kp := <- c.keyPresses:
 			switch kp {
+			case 's': 
+				var saveReply stubs.WorldInfo
+				broker.Call("Broker.Consolidate", true, &saveReply)
+				pgmImage(&p, &saveReply.World, &c, &saveReply.CurrentTurns)
+			case 'k':
+				var killReply stubs.WorldInfo
+				broker.Call("Broker.Consolidate", true, &killReply)
+				c.events <- FinalTurnComplete{CompletedTurns: killReply.Turns, Alive: stubs.GetAliveCells(&killReply.World)}
+				pgmImage(&p, &killReply.World, &c, &killReply.CurrentTurns)
+				c.events <- StateChange{CompletedTurns: killReply.CurrentTurns, NewState: Quitting}
+				broker.Call("Broker.QuitProgram", true, &stubs.Response{})
+				return
+			case 'q':
+				var quitReply stubs.WorldInfo
+				broker.Call("Broker.Consolidate", true, &quitReply)
+				pgmImage(&p, &quitReply.World, &c, &quitReply.CurrentTurns)
+				c.events <- StateChange{CompletedTurns: quitReply.CurrentTurns, NewState: Quitting}
+				broker.Call("Broker.UnregisterDistributor", true, &stubs.Response{})
+				return
+			case 'p':
+				var pausedReply stubs.WorldInfo
+				var isPaused stubs.Response
+				broker.Call("Broker.Consolidate", true, &pausedReply)
+				broker.Call("Broker.TogglePause", true, &isPaused)
+				if isPaused.Resp { // paused
+					paused = false
+					c.events <- StateChange{CompletedTurns: pausedReply.CurrentTurns, NewState: Executing}
+				} else {
+					paused = true
+					c.events <- StateChange{CompletedTurns: pausedReply.CurrentTurns, NewState: Paused}
+				}
 			}
 		case <- done:
-			c.events <- FinalTurnComplete{CompletedTurns: p.Turns, Alive: stubs.GetAliveCells(&reply.World)}
+			c.events <- FinalTurnComplete{CompletedTurns: reply.Turns, Alive: stubs.GetAliveCells(&reply.World)}
 
 			// save pgm image
 			pgmImage(&p, &reply.World, &c, &reply.Turns)

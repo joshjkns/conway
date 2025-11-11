@@ -26,7 +26,11 @@ type Data struct {
 }
 
 type WorkerInfo struct {
-	Port string
+	Address string
+}
+
+type DistributorInfo struct {
+	Address string
 }
 
 type Confirmation struct {
@@ -43,6 +47,7 @@ type WorldInfo struct {
 	Height int
 	Turns int
 	CurrentTurns int
+	Paused bool
 }
 
 type NeighbourPair struct {
@@ -56,6 +61,11 @@ type ChunkInfo struct {
 	EndRow int
 	Neighbours NeighbourPair
 	Turns int
+}
+
+type CellsFlippedData struct {
+	CompletedTurns int
+	CellsFlipped []util.Cell
 }
 
 func CreateWorld(w int, h int) [][]byte {
@@ -106,5 +116,22 @@ func CreateChunk(world [][]byte, width, height, startY, endY int) [][]byte {
 			res[y-startY][x] = world[y][x]
 		}
 	}
+	return res
+}
+
+func AddHalos(world, chunk [][]byte, width, height, startY, endY int) [][]byte {
+	res := CreateWorld(width, height + 2)
+
+	topIndex := ConstrainValue(startY - 1, height)
+	bottomIndex := ConstrainValue(endY + 1, height)
+
+	copy(res[0], world[topIndex])
+
+	for i := 0; i < height; i++ {
+		copy(res[i+1], chunk[i])
+	}
+
+	copy(res[height+1], world[bottomIndex])
+
 	return res
 }
