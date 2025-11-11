@@ -17,7 +17,6 @@ type Broker struct{
 	currentTurns int
 	mu      sync.Mutex
   cond    *sync.Cond
-	ready int
 	distributor *rpc.Client
 	paused bool
 	quit bool
