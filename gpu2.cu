@@ -18,11 +18,10 @@ __device__ inline uint64_t rotate_right(uint64_t centre, uint64_t right){
 __global__ void singleIteration(uint64_t *current, uint64_t *next, int height, int width) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x >= width || y >= height) return;
+    y *= 2; //each thread processes two rows
 
     int y_up = (y - 1 + height) % height;
-    int y_down = (y + 1) % height;
+    int y_down = (y + 2) % height;
     int x_left = (x - 1 + width) % width;
     int x_right = (x + 1) % width;
 
@@ -32,9 +31,9 @@ __global__ void singleIteration(uint64_t *current, uint64_t *next, int height, i
     uint64_t middle11 = current[y * width + x_left];
     uint64_t middle12 = current[y * width + x];
     uint64_t middle13 = current[y * width + x_right];
-    uint64_t middle21 = current[y * width + x_left];
-    uint64_t middle22 = current[y * width + x];
-    uint64_t middle23 = current[y * width + x_right];
+    uint64_t middle21 = current[(y+1) * width + x_left];
+    uint64_t middle22 = current[(y+1) * width + x];
+    uint64_t middle23 = current[(y+1) * width + x_right];
     uint64_t bottomLeft = current[y_down * width + x_left];
     uint64_t bottom = current[y_down * width + x];
     uint64_t bottomRight = current[y_down * width + x_right];
@@ -42,12 +41,12 @@ __global__ void singleIteration(uint64_t *current, uint64_t *next, int height, i
     uint64_t tl = rotate_left(top, topLeft);
     uint64_t t = top;
     uint64_t tr = rotate_right(top, topRight);
-    uint64_t m11 = rotate_left(middle12, left);
+    uint64_t m11 = rotate_left(middle12, middle11);
     uint64_t m12 = middle12;
-    uint64_t m13 = rotate_right(middle12, right);
-    uint64_t m21 = rotate_left(middle22, left);
+    uint64_t m13 = rotate_right(middle12, middle13);
+    uint64_t m21 = rotate_left(middle22, middle21);
     uint64_t m22 = middle22;
-    uint64_t m23 = rotate_right(middle22, right);
+    uint64_t m23 = rotate_right(middle22, middle23);
     uint64_t bl = rotate_left(bottom, bottomLeft);
     uint64_t b = bottom;
     uint64_t br = rotate_right(bottom, bottomRight);
@@ -102,15 +101,16 @@ __global__ void singleIteration(uint64_t *current, uint64_t *next, int height, i
     uint64_t m22_count3 = tempBit10 & m22_temp;
 
     // Apply GOL rules:
-    next[y1 * width + x1] = (m12 & m12_count2) | m12_count3;
-    next[y2 * width + x2] = (m22 & m22_count2) | m22_count3;
+    next[y * width + x] = (m12 & m12_count2) | m12_count3;
+    next[(y+1) * width + x] = (m22 & m22_count2) | m22_count3;
 }
 
 void gol(uint64_t **current_ptr, uint64_t **next_ptr, int width, int height, int iterations) {
-    int wordsWidth = (width + 63) / 64;
+    int arrayWidth = width / 64;
+    int arrayHeight = height / 2;
     uint64_t *current = *current_ptr;
     uint64_t *next = *next_ptr;
-    size_t size = wordsWidth * height * sizeof(uint64_t);
+    size_t size = arrayWidth * height * sizeof(uint64_t);
 
     uint64_t *d_current;
     uint64_t *d_next;
@@ -120,11 +120,11 @@ void gol(uint64_t **current_ptr, uint64_t **next_ptr, int width, int height, int
     cudaMemcpy(d_current, *current_ptr, size, cudaMemcpyHostToDevice);
 
     dim3 blockDim(16, 16);
-    dim3 gridDim((wordsWidth + blockDim.x - 1)/blockDim.x, (height + blockDim.y - 1)/blockDim.y);
+    dim3 gridDim((arrayWidth + blockDim.x - 1)/blockDim.x, (arrayHeight + blockDim.y - 1)/blockDim.y);
 
 
     for (int iteration = 0; iteration < iterations; iteration++) {
-        singleIteration<<<gridDim, blockDim>>>(d_current, d_next, height, wordsWidth);
+        singleIteration<<<gridDim, blockDim>>>(d_current, d_next, height, arrayWidth);
         cudaDeviceSynchronize();
 
         uint64_t *tmp = d_current;
