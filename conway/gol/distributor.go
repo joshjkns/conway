@@ -10,8 +10,9 @@ import (
 	"time"
 )
 
+// TODO: remove unnecessary overhead within consolidate, maybe add a param to say what you want ?
+
 type Distributor struct{
-	channels distributorChannels
 }
 
 type distributorChannels struct {
@@ -102,7 +103,7 @@ func distributor(p Params, c distributorChannels) {
 	if err != nil {
 		panic(err)
 	}
-	// fmt.Println("[Distributor] - Dialed broker successfully.")
+
 	defer broker.Close()
 	// response is if its been used before - true is yes there is a state, false is no there isnt a state
 	var stateResponse stubs.Response
