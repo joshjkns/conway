@@ -131,7 +131,7 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 				endY = args.Height - 1
 			}
 
-			chunk := stubs.CreateChunk(world, args.Width, (endY - startY + 1), startY, endY)
+			chunk := world[startY:endY+1]
 			haloedChunk := stubs.AddHalos(b.currentWorld, chunk, args.Width, (endY - startY + 1), startY, endY)
 
 			argArray[i] = stubs.ChunkInfo{Chunk: haloedChunk, StartRow: startY, EndRow: endY, Threads: args.Threads}

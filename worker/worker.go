@@ -39,7 +39,7 @@ func countLiveNeighbours(world *[][]byte, x, y, width, height int) int {
 }
 
 func increment(chunk, result *[][]byte, width, height, startRow, endRow int) {
-	for y := 1; y < len(*chunk)-1; y++ { // only checks actual part
+	for y := startRow; y <= endRow; y++ { // only checks actual part
 		for x := 0; x < width; x++ {
 			liveNeighbours := countLiveNeighbours(chunk, x, y, width, len(*chunk))
 			if (*chunk)[y][x] == 255 { // current cell is alive
