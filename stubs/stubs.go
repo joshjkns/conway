@@ -14,6 +14,8 @@ const (
 type WaitArgs struct {
 	ID int
 	Turn int
+	Chunk ChunkInfo
+	Width int
 }
 
 type Halo struct {

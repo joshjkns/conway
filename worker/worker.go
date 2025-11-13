@@ -152,7 +152,7 @@ func (w *Worker) GameOfLife(args stubs.ChunkInfo, reply *stubs.ChunkInfo) (err e
     current = newChunk
 
 		var resp stubs.Response
-    w.broker.Call("Broker.WaitForEveryone", stubs.WaitArgs{ID: w.id}, &resp)
+    w.broker.Call("Broker.WaitForEveryone", stubs.WaitArgs{Turn: i, Chunk: stubs.ChunkInfo{Chunk: current}, Width: w.width, ID: w.id}, &resp)
 		fmt.Println("DONE WAITING")
 
 		w.mu.Lock()

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"csa/conway/gol"
 	"csa/stubs"
 	"flag"
 	"fmt"
@@ -17,6 +18,8 @@ type Broker struct{
 	mu      sync.Mutex
   cond    *sync.Cond
 	ready int
+	oldAliveCells int
+	aliveCells int
 }
 
 func (b *Broker) Register(args stubs.WorkerInfo, reply *stubs.Confirmation) (err error) {
@@ -31,6 +34,18 @@ func (b *Broker) Register(args stubs.WorkerInfo, reply *stubs.Confirmation) (err
 	reply.ID = b.currentID
 	fmt.Println("[Broker] - Registered worker ID: ", reply.ID, "on port ", args.Port)
 	b.currentID += 1
+	return nil
+}
+
+func (b *Broker) Consoldidate(args bool, reply *gol.AliveCellsCount) (err error) {
+	b.mu.Lock()
+	if b.aliveCells != 0 {
+		reply.CellsCount = b.aliveCells
+	} else {
+		reply.CellsCount = b.oldAliveCells
+	}
+	reply.CompletedTurns = b.currentTurns
+	b.mu.Unlock()
 	return nil
 }
 
@@ -116,12 +131,22 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 
 func (b *Broker) WaitForEveryone(args stubs.WaitArgs, reply *stubs.Response) (err error) {
 	b.mu.Lock()
+	b.currentTurns = args.Turn
+	for y := 0; y < len(args.Chunk.Chunk); y++ {
+		for j := 0; j < args.Width; j++ {
+			if args.Chunk.Chunk[y][j] == 255 {
+				b.aliveCells += 1
+			}
+		}
+	}
 	b.ready += 1
 	fmt.Println("[Broker] Worker ", args.ID, "is ready! Total: ", b.ready)
 
 	if b.ready == len(b.workers) {
 		b.ready = 0
 		b.cond.Broadcast()
+		b.oldAliveCells = b.aliveCells
+		b.aliveCells = 0
 	} else {
 		for b.ready != 0 { 
 			b.cond.Wait()

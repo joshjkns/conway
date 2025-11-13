@@ -108,9 +108,9 @@ func distributor(p Params, c distributorChannels) {
 	for {
 		select {
 		case <- ticker.C:
-			var tickerReply []util.Cell
+			var tickerReply AliveCellsCount
 			broker.Call("Broker.Consoldidate", true, &tickerReply)
-
+			c.events <- tickerReply
 		case kp := <- c.keyPresses:
 			switch kp {
 			}
