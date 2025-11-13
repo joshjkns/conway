@@ -17,214 +17,449 @@ __device__ inline uint64_t rotate_right(uint64_t centre, uint64_t right){
     return (centre >> 1) | (right << 63);
 }
 
-__device__ inline void RowDoubleLeftUpdate(uint64_t *nextTop, uint64_t *nextBottom, uint64_t topLeft,uint64_t top,uint64_t topRight,uint64_t middle11, uint64_t middle12,uint64_t middle13,uint64_t middle 21, uint64_t middle22,uint64_t middle23,uint64_t bottomLeft,uint64_t bottom,uint64_t bottomRight) {
-    uint64_t tl = topLeft << 1;
-    uint64_t t = topLeft;
-    uint64_t tr = rotate_right(topLeft, top);
-    uint64_t m11 = middle11 << 1;
-    uint64_t m12 = middle11;
-    uint64_t m13 = rotate_right(middle11, middle12);
-    uint64_t m21 = middle21 << 1;
-    uint64_t m22 = middle21;
-    uint64_t m23 = rotate_right(middle21, middle22);
-    uint64_t bl = bottomLeft << 1;
-    uint64_t b = bottomLeft;
-    uint64_t br = rotate_right(bottomLeft, bottom);
+// __device__ inline void RowDoubleLeftUpdate(uint64_t *nextTop, uint64_t *nextBottom, uint64_t topLeft,uint64_t top,uint64_t topRight,uint64_t middle11, uint64_t middle12,uint64_t middle13,uint64_t middle 21, uint64_t middle22,uint64_t middle23,uint64_t bottomLeft,uint64_t bottom,uint64_t bottomRight) {
+//     uint64_t tl = topLeft << 1;
+//     uint64_t t = topLeft;
+//     uint64_t tr = rotate_right(topLeft, top);
+//     uint64_t m11 = middle11 << 1;
+//     uint64_t m12 = middle11;
+//     uint64_t m13 = rotate_right(middle11, middle12);
+//     uint64_t m21 = middle21 << 1;
+//     uint64_t m22 = middle21;
+//     uint64_t m23 = rotate_right(middle21, middle22);
+//     uint64_t bl = bottomLeft << 1;
+//     uint64_t b = bottomLeft;
+//     uint64_t br = rotate_right(bottomLeft, bottom);
     
     
-    // Half-Adders to sum the 8 neighbors:
-    uint64_t sum1 = m13 ^ m23;
-    uint64_t carry1 = m13 & m23;
-    uint64_t sum2 = m11 ^ m21;
-    uint64_t carry2 = m11 & m21;
-    uint64_t sum3 = tl ^ t;
-    uint64_t carry3 = tl & t;
-    uint64_t sum4 = tr ^ m12;
-    uint64_t carry4 = tr & m12;
-    uint64_t sum5 = br ^ b;
-    uint64_t carry5 = br & b;
-    uint64_t sum6 = bl ^ m22;
-    uint64_t carry6 = bl & m22;
+//     // Half-Adders to sum the 8 neighbors:
+//     uint64_t sum1 = m13 ^ m23;
+//     uint64_t carry1 = m13 & m23;
+//     uint64_t sum2 = m11 ^ m21;
+//     uint64_t carry2 = m11 & m21;
+//     uint64_t sum3 = tl ^ t;
+//     uint64_t carry3 = tl & t;
+//     uint64_t sum4 = tr ^ m12;
+//     uint64_t carry4 = tr & m12;
+//     uint64_t sum5 = br ^ b;
+//     uint64_t carry5 = br & b;
+//     uint64_t sum6 = bl ^ m22;
+//     uint64_t carry6 = bl & m22;
 
-    // Combining two Half-Adders into a full 3-bit addes with a 3-bit result:
-    uint64_t bit00 = sum1 ^ sum2;
-    uint64_t bit01 = (sum1 ^ sum2) ^ (carry1 ^ carry2);
-    uint64_t bit02 = carry1 & carry2;
+//     // Combining two Half-Adders into a full 3-bit addes with a 3-bit result:
+//     uint64_t bit00 = sum1 ^ sum2;
+//     uint64_t bit01 = (sum1 ^ sum2) ^ (carry1 ^ carry2);
+//     uint64_t bit02 = carry1 & carry2;
 
-    uint64_t bit10 = sum3 ^ sum4;
-    uint64_t bit11 = (sum3 ^ sum4) ^ (carry3 ^ carry4);
-    uint64_t bit12 = carry3 & carry4;
+//     uint64_t bit10 = sum3 ^ sum4;
+//     uint64_t bit11 = (sum3 ^ sum4) ^ (carry3 ^ carry4);
+//     uint64_t bit12 = carry3 & carry4;
 
-    uint64_t bit20 = sum5 ^ sum6;
-    uint64_t bit21 = (sum5 ^ sum6) ^ (carry5 ^ carry6);
-    uint64_t bit22 = carry5 & carry6;
+//     uint64_t bit20 = sum5 ^ sum6;
+//     uint64_t bit21 = (sum5 ^ sum6) ^ (carry5 ^ carry6);
+//     uint64_t bit22 = carry5 & carry6;
 
-    // Add the three 3-bit numbers together to get final 4-bit neighbor counts, for both m12 and m22:
-    uint64_t temp01 = bit00 & bit10;
-    uint64_t temp02 = bit01 ^ bit11;
-    uint64_t tempBit00 = bit00 ^ bit10;
-    uint64_t tempBit01 = temp01 ^ temp02;
-    uint64_t tempBit02 = bit02 | bit12 | (bit01 & bit11) | (temp01 & temp02); //tempBit02 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
+//     // Add the three 3-bit numbers together to get final 4-bit neighbor counts, for both m12 and m22:
+//     uint64_t temp01 = bit00 & bit10;
+//     uint64_t temp02 = bit01 ^ bit11;
+//     uint64_t tempBit00 = bit00 ^ bit10;
+//     uint64_t tempBit01 = temp01 ^ temp02;
+//     uint64_t tempBit02 = bit02 | bit12 | (bit01 & bit11) | (temp01 & temp02); //tempBit02 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
 
-    uint64_t temp11 = bit00 & bit20;
-    uint64_t temp12 = bit01 ^ bit21;
-    uint64_t tempBit10 = bit00 ^ bit20;
-    uint64_t tempBit11 = temp11 ^ temp12;
-    uint64_t tempBit12 = bit02 | bit22 | (bit01 & bit21) | (temp11 & temp12); //tempBit12 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
+//     uint64_t temp11 = bit00 & bit20;
+//     uint64_t temp12 = bit01 ^ bit21;
+//     uint64_t tempBit10 = bit00 ^ bit20;
+//     uint64_t tempBit11 = temp11 ^ temp12;
+//     uint64_t tempBit12 = bit02 | bit22 | (bit01 & bit21) | (temp11 & temp12); //tempBit12 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
 
-    // Final three bits for m12 and m22:
-    uint64_t m12_temp = (~tempBit02) & tempBit01;
-    uint64_t m12_count2 = (~tempBit00) & m12_temp; //is 1 if number of cells is equal to 2
-    uint64_t m12_count3 = tempBit00 & m12_temp; //is 1 if number of cells is equal to 3
+//     // Final three bits for m12 and m22:
+//     uint64_t m12_temp = (~tempBit02) & tempBit01;
+//     uint64_t m12_count2 = (~tempBit00) & m12_temp; //is 1 if number of cells is equal to 2
+//     uint64_t m12_count3 = tempBit00 & m12_temp; //is 1 if number of cells is equal to 3
 
-    uint64_t m22_temp = (~tempBit12) & tempBit11;
-    uint64_t m22_count2 = (~tempBit10) & m22_temp;
-    uint64_t m22_count3 = tempBit10 & m22_temp;
+//     uint64_t m22_temp = (~tempBit12) & tempBit11;
+//     uint64_t m22_count2 = (~tempBit10) & m22_temp;
+//     uint64_t m22_count3 = tempBit10 & m22_temp;
 
-    // Apply GOL rules:
-    *nextTop = (m11 & m12_count2) | m12_count3;
-    *nextBottom = (m21 & m22_count2) | m22_count3;
-}
+//     // Apply GOL rules:
+//     *nextTop = (m11 & m12_count2) | m12_count3;
+//     *nextBottom = (m21 & m22_count2) | m22_count3;
+// }
 
-__device__ inline void RowDoubleRightUpdate(uint64_t *nextTop, uint64_t *nextBottom, uint64_t topLeft,uint64_t top,uint64_t topRight,uint64_t middle11, uint64_t middle12,uint64_t middle13,uint64_t middle 21, uint64_t middle22,uint64_t middle23,uint64_t bottomLeft,uint64_t bottom,uint64_t bottomRight) {
-    uint64_t tl = rotate_left(topRight, top);
-    uint64_t t = topRight;
-    uint64_t tr = topRight >> 1;
-    uint64_t m11 = rotate_left(middle13, middle12);
-    uint64_t m12 = middle13;
-    uint64_t m13 = middle13 >> 1;
-    uint64_t m21 = rotate_left(middle23, middle22);
-    uint64_t m22 = middle23;
-    uint64_t m23 = middle23 >> 1;
-    uint64_t bl = rotate_left(bottomRight, bottom);
-    uint64_t b = bottomRight;
-    uint64_t br = bottomRight >> 1;
+// __device__ inline void RowDoubleRightUpdate(uint64_t *nextTop, uint64_t *nextBottom, uint64_t topLeft,uint64_t top,uint64_t topRight,uint64_t middle11, uint64_t middle12,uint64_t middle13,uint64_t middle 21, uint64_t middle22,uint64_t middle23,uint64_t bottomLeft,uint64_t bottom,uint64_t bottomRight) {
+//     uint64_t tl = rotate_left(topRight, top);
+//     uint64_t t = topRight;
+//     uint64_t tr = topRight >> 1;
+//     uint64_t m11 = rotate_left(middle13, middle12);
+//     uint64_t m12 = middle13;
+//     uint64_t m13 = middle13 >> 1;
+//     uint64_t m21 = rotate_left(middle23, middle22);
+//     uint64_t m22 = middle23;
+//     uint64_t m23 = middle23 >> 1;
+//     uint64_t bl = rotate_left(bottomRight, bottom);
+//     uint64_t b = bottomRight;
+//     uint64_t br = bottomRight >> 1;
     
-    // Half-Adders to sum the 8 neighbors:
-    uint64_t sum1 = m13 ^ m23;
-    uint64_t carry1 = m13 & m23;
-    uint64_t sum2 = m11 ^ m21;
-    uint64_t carry2 = m11 & m21;
-    uint64_t sum3 = tl ^ t;
-    uint64_t carry3 = tl & t;
-    uint64_t sum4 = tr ^ m12;
-    uint64_t carry4 = tr & m12;
-    uint64_t sum5 = br ^ b;
-    uint64_t carry5 = br & b;
-    uint64_t sum6 = bl ^ m22;
-    uint64_t carry6 = bl & m22;
+//     // Half-Adders to sum the 8 neighbors:
+//     uint64_t sum1 = m13 ^ m23;
+//     uint64_t carry1 = m13 & m23;
+//     uint64_t sum2 = m11 ^ m21;
+//     uint64_t carry2 = m11 & m21;
+//     uint64_t sum3 = tl ^ t;
+//     uint64_t carry3 = tl & t;
+//     uint64_t sum4 = tr ^ m12;
+//     uint64_t carry4 = tr & m12;
+//     uint64_t sum5 = br ^ b;
+//     uint64_t carry5 = br & b;
+//     uint64_t sum6 = bl ^ m22;
+//     uint64_t carry6 = bl & m22;
 
-    // Combining two Half-Adders into a full 3-bit addes with a 3-bit result:
-    uint64_t bit00 = sum1 ^ sum2;
-    uint64_t bit01 = (sum1 ^ sum2) ^ (carry1 ^ carry2);
-    uint64_t bit02 = carry1 & carry2;
+//     // Combining two Half-Adders into a full 3-bit addes with a 3-bit result:
+//     uint64_t bit00 = sum1 ^ sum2;
+//     uint64_t bit01 = (sum1 ^ sum2) ^ (carry1 ^ carry2);
+//     uint64_t bit02 = carry1 & carry2;
 
-    uint64_t bit10 = sum3 ^ sum4;
-    uint64_t bit11 = (sum3 ^ sum4) ^ (carry3 ^ carry4);
-    uint64_t bit12 = carry3 & carry4;
+//     uint64_t bit10 = sum3 ^ sum4;
+//     uint64_t bit11 = (sum3 ^ sum4) ^ (carry3 ^ carry4);
+//     uint64_t bit12 = carry3 & carry4;
 
-    uint64_t bit20 = sum5 ^ sum6;
-    uint64_t bit21 = (sum5 ^ sum6) ^ (carry5 ^ carry6);
-    uint64_t bit22 = carry5 & carry6;
+//     uint64_t bit20 = sum5 ^ sum6;
+//     uint64_t bit21 = (sum5 ^ sum6) ^ (carry5 ^ carry6);
+//     uint64_t bit22 = carry5 & carry6;
 
-    // Add the three 3-bit numbers together to get final 4-bit neighbor counts, for both m12 and m22:
-    uint64_t temp01 = bit00 & bit10;
-    uint64_t temp02 = bit01 ^ bit11;
-    uint64_t tempBit00 = bit00 ^ bit10;
-    uint64_t tempBit01 = temp01 ^ temp02;
-    uint64_t tempBit02 = bit02 | bit12 | (bit01 & bit11) | (temp01 & temp02); //tempBit02 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
+//     // Add the three 3-bit numbers together to get final 4-bit neighbor counts, for both m12 and m22:
+//     uint64_t temp01 = bit00 & bit10;
+//     uint64_t temp02 = bit01 ^ bit11;
+//     uint64_t tempBit00 = bit00 ^ bit10;
+//     uint64_t tempBit01 = temp01 ^ temp02;
+//     uint64_t tempBit02 = bit02 | bit12 | (bit01 & bit11) | (temp01 & temp02); //tempBit02 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
 
-    uint64_t temp11 = bit00 & bit20;
-    uint64_t temp12 = bit01 ^ bit21;
-    uint64_t tempBit10 = bit00 ^ bit20;
-    uint64_t tempBit11 = temp11 ^ temp12;
-    uint64_t tempBit12 = bit02 | bit22 | (bit01 & bit21) | (temp11 & temp12); //tempBit12 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
+//     uint64_t temp11 = bit00 & bit20;
+//     uint64_t temp12 = bit01 ^ bit21;
+//     uint64_t tempBit10 = bit00 ^ bit20;
+//     uint64_t tempBit11 = temp11 ^ temp12;
+//     uint64_t tempBit12 = bit02 | bit22 | (bit01 & bit21) | (temp11 & temp12); //tempBit12 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
 
-    // Final three bits for m12 and m22:
-    uint64_t m12_temp = (~tempBit02) & tempBit01;
-    uint64_t m12_count2 = (~tempBit00) & m12_temp; //is 1 if number of cells is equal to 2
-    uint64_t m12_count3 = tempBit00 & m12_temp; //is 1 if number of cells is equal to 3
+//     // Final three bits for m12 and m22:
+//     uint64_t m12_temp = (~tempBit02) & tempBit01;
+//     uint64_t m12_count2 = (~tempBit00) & m12_temp; //is 1 if number of cells is equal to 2
+//     uint64_t m12_count3 = tempBit00 & m12_temp; //is 1 if number of cells is equal to 3
 
-    uint64_t m22_temp = (~tempBit12) & tempBit11;
-    uint64_t m22_count2 = (~tempBit10) & m22_temp;
-    uint64_t m22_count3 = tempBit10 & m22_temp;
+//     uint64_t m22_temp = (~tempBit12) & tempBit11;
+//     uint64_t m22_count2 = (~tempBit10) & m22_temp;
+//     uint64_t m22_count3 = tempBit10 & m22_temp;
 
-    // Apply GOL rules:
-    *nextTop = (m13 & m12_count2) | m12_count3;
-    *nextBottom = (m23 & m22_count2) | m22_count3;
-}
+//     // Apply GOL rules:
+//     *nextTop = (m13 & m12_count2) | m12_count3;
+//     *nextBottom = (m23 & m22_count2) | m22_count3;
+// }
 
-__device__ inline void RowDoubleCentralUpdate(uint64_t *nextTop, uint64_t *nextBottom, uint64_t topLeft,uint64_t top,uint64_t topRight,uint64_t middle11, uint64_t middle12,uint64_t middle13,uint64_t middle 21, uint64_t middle22,uint64_t middle23,uint64_t bottomLeft,uint64_t bottom,uint64_t bottomRight) {
-    uint64_t tl = rotate_left(top, topLeft);
-    uint64_t t = top;
-    uint64_t tr = rotate_right(top, topRight);
-    uint64_t m11 = rotate_left(middle12, middle11);
-    uint64_t m12 = middle12;
-    uint64_t m13 = rotate_right(middle12, middle13);
-    uint64_t m21 = rotate_left(middle22, middle21);
-    uint64_t m22 = middle22;
-    uint64_t m23 = rotate_right(middle22, middle23);
-    uint64_t bl = rotate_left(bottom, bottomLeft);
-    uint64_t b = bottom;
-    uint64_t br = rotate_right(bottom, bottomRight);
+// __device__ inline void RowDoubleCentralUpdate(uint64_t *nextTop, uint64_t *nextBottom, uint64_t topLeft,uint64_t top,uint64_t topRight,uint64_t middle11, uint64_t middle12,uint64_t middle13,uint64_t middle 21, uint64_t middle22,uint64_t middle23,uint64_t bottomLeft,uint64_t bottom,uint64_t bottomRight) {
+//     uint64_t tl = rotate_left(top, topLeft);
+//     uint64_t t = top;
+//     uint64_t tr = rotate_right(top, topRight);
+//     uint64_t m11 = rotate_left(middle12, middle11);
+//     uint64_t m12 = middle12;
+//     uint64_t m13 = rotate_right(middle12, middle13);
+//     uint64_t m21 = rotate_left(middle22, middle21);
+//     uint64_t m22 = middle22;
+//     uint64_t m23 = rotate_right(middle22, middle23);
+//     uint64_t bl = rotate_left(bottom, bottomLeft);
+//     uint64_t b = bottom;
+//     uint64_t br = rotate_right(bottom, bottomRight);
     
-    // Half-Adders to sum the 8 neighbors:
-    uint64_t sum1 = m13 ^ m23;
-    uint64_t carry1 = m13 & m23;
-    uint64_t sum2 = m11 ^ m21;
-    uint64_t carry2 = m11 & m21;
-    uint64_t sum3 = tl ^ t;
-    uint64_t carry3 = tl & t;
-    uint64_t sum4 = tr ^ m12;
-    uint64_t carry4 = tr & m12;
-    uint64_t sum5 = br ^ b;
-    uint64_t carry5 = br & b;
-    uint64_t sum6 = bl ^ m22;
-    uint64_t carry6 = bl & m22;
+//     // Half-Adders to sum the 8 neighbors:
+//     uint64_t sum1 = m13 ^ m23;
+//     uint64_t carry1 = m13 & m23;
+//     uint64_t sum2 = m11 ^ m21;
+//     uint64_t carry2 = m11 & m21;
+//     uint64_t sum3 = tl ^ t;
+//     uint64_t carry3 = tl & t;
+//     uint64_t sum4 = tr ^ m12;
+//     uint64_t carry4 = tr & m12;
+//     uint64_t sum5 = br ^ b;
+//     uint64_t carry5 = br & b;
+//     uint64_t sum6 = bl ^ m22;
+//     uint64_t carry6 = bl & m22;
 
-    // Combining two Half-Adders into a full 3-bit addes with a 3-bit result:
-    uint64_t bit00 = sum1 ^ sum2;
-    uint64_t bit01 = (sum1 ^ sum2) ^ (carry1 ^ carry2);
-    uint64_t bit02 = carry1 & carry2;
+//     // Combining two Half-Adders into a full 3-bit addes with a 3-bit result:
+//     uint64_t bit00 = sum1 ^ sum2;
+//     uint64_t bit01 = (sum1 ^ sum2) ^ (carry1 ^ carry2);
+//     uint64_t bit02 = carry1 & carry2;
 
-    uint64_t bit10 = sum3 ^ sum4;
-    uint64_t bit11 = (sum3 ^ sum4) ^ (carry3 ^ carry4);
-    uint64_t bit12 = carry3 & carry4;
+//     uint64_t bit10 = sum3 ^ sum4;
+//     uint64_t bit11 = (sum3 ^ sum4) ^ (carry3 ^ carry4);
+//     uint64_t bit12 = carry3 & carry4;
 
-    uint64_t bit20 = sum5 ^ sum6;
-    uint64_t bit21 = (sum5 ^ sum6) ^ (carry5 ^ carry6);
-    uint64_t bit22 = carry5 & carry6;
+//     uint64_t bit20 = sum5 ^ sum6;
+//     uint64_t bit21 = (sum5 ^ sum6) ^ (carry5 ^ carry6);
+//     uint64_t bit22 = carry5 & carry6;
 
-    // Add the three 3-bit numbers together to get final 4-bit neighbor counts, for both m12 and m22:
-    uint64_t temp01 = bit00 & bit10;
-    uint64_t temp02 = bit01 ^ bit11;
-    uint64_t tempBit00 = bit00 ^ bit10;
-    uint64_t tempBit01 = temp01 ^ temp02;
-    uint64_t tempBit02 = bit02 | bit12 | (bit01 & bit11) | (temp01 & temp02); //tempBit02 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
+//     // Add the three 3-bit numbers together to get final 4-bit neighbor counts, for both m12 and m22:
+//     uint64_t temp01 = bit00 & bit10;
+//     uint64_t temp02 = bit01 ^ bit11;
+//     uint64_t tempBit00 = bit00 ^ bit10;
+//     uint64_t tempBit01 = temp01 ^ temp02;
+//     uint64_t tempBit02 = bit02 | bit12 | (bit01 & bit11) | (temp01 & temp02); //tempBit02 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
 
-    uint64_t temp11 = bit00 & bit20;
-    uint64_t temp12 = bit01 ^ bit21;
-    uint64_t tempBit10 = bit00 ^ bit20;
-    uint64_t tempBit11 = temp11 ^ temp12;
-    uint64_t tempBit12 = bit02 | bit22 | (bit01 & bit21) | (temp11 & temp12); //tempBit12 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
+//     uint64_t temp11 = bit00 & bit20;
+//     uint64_t temp12 = bit01 ^ bit21;
+//     uint64_t tempBit10 = bit00 ^ bit20;
+//     uint64_t tempBit11 = temp11 ^ temp12;
+//     uint64_t tempBit12 = bit02 | bit22 | (bit01 & bit21) | (temp11 & temp12); //tempBit12 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
 
-    // Final three bits for m12 and m22:
-    uint64_t m12_temp = (~tempBit02) & tempBit01;
-    uint64_t m12_count2 = (~tempBit00) & m12_temp; //is 1 if number of cells is equal to 2
-    uint64_t m12_count3 = tempBit00 & m12_temp; //is 1 if number of cells is equal to 3
+//     // Final three bits for m12 and m22:
+//     uint64_t m12_temp = (~tempBit02) & tempBit01;
+//     uint64_t m12_count2 = (~tempBit00) & m12_temp; //is 1 if number of cells is equal to 2
+//     uint64_t m12_count3 = tempBit00 & m12_temp; //is 1 if number of cells is equal to 3
 
-    uint64_t m22_temp = (~tempBit12) & tempBit11;
-    uint64_t m22_count2 = (~tempBit10) & m22_temp;
-    uint64_t m22_count3 = tempBit10 & m22_temp;
+//     uint64_t m22_temp = (~tempBit12) & tempBit11;
+//     uint64_t m22_count2 = (~tempBit10) & m22_temp;
+//     uint64_t m22_count3 = tempBit10 & m22_temp;
 
-    // Apply GOL rules:
-    *nextTop = (m12 & m12_count2) | m12_count3;
-    *nextBottom = (m22 & m22_count2) | m22_count3;
-}
+//     // Apply GOL rules:
+//     *nextTop = (m12 & m12_count2) | m12_count3;
+//     *nextBottom = (m22 & m22_count2) | m22_count3;
+// }
+
+// __device__ inline void fourByFourCentralUpdate(
+//     uint64_t r00, uint64_t r01,  // Row 0 (top halo)
+//     uint64_t r10, uint64_t r11,  // Row 1 (output)
+//     uint64_t r20, uint64_t r21,  // Row 2 (output)
+//     uint64_t r30, uint64_t r31,  // Row 3 (output)
+//     uint64_t r40, uint64_t r41,  // Row 4 (output)
+//     uint64_t r50, uint64_t r51,  // Row 5 (bottom halo)
+//     uint64_t& out10, uint64_t& out11,  // Output row 1
+//     uint64_t& out20, uint64_t& out21,  // Output row 2
+//     uint64_t& out30, uint64_t& out31,  // Output row 3
+//     uint64_t& out40, uint64_t& out41   // Output row 4
+// ) {
+//     // Storage organized as [row][column]
+//     uint64_t storage[6][2];
+//     storage[0][0] = r00; storage[0][1] = r01;
+//     storage[1][0] = r10; storage[1][1] = r11;
+//     storage[2][0] = r20; storage[2][1] = r21;
+//     storage[3][0] = r30; storage[3][1] = r31;
+//     storage[4][0] = r40; storage[4][1] = r41;
+//     storage[5][0] = r50; storage[5][1] = r51;
+    
+//     uint64_t output[4][2];  // 4 output rows, 2 columns
+    
+//     // Reuse chains for column 0
+//     uint32_t c0_left_top_xor, c0_left_mid_xor, c0_left_top_maj, c0_left_mid_maj;
+//     uint32_t c0_right_top_xor, c0_right_mid_xor, c0_right_top_maj, c0_right_mid_maj;
+    
+//     // Reuse chains for column 1
+//     uint32_t c1_left_top_xor, c1_left_mid_xor, c1_left_top_maj, c1_left_mid_maj;
+//     uint32_t c1_right_top_xor, c1_right_mid_xor, c1_right_top_maj, c1_right_mid_maj;
+    
+//     // Process 4 output rows
+//     #pragma unroll //encourage compiler to unroll for loop and put into thraed registers check via compiling with: nvcc -Xptxas -v kernel.cu -o kernel.o, and executing it, should have line ptxas info
+//     for (int row = 1; row <= 4; row++) {
+        
+//         // ========== COLUMN 0 ==========
+//         {
+//             // Split into 32-bit halves
+//             uint32_t left_top = (uint32_t)(storage[row-1][0] >> 32);
+//             uint32_t right_top = (uint32_t)(storage[row-1][0]);
+//             uint32_t left_mid = (uint32_t)(storage[row][0] >> 32);
+//             uint32_t right_mid = (uint32_t)(storage[row][0]);
+//             uint32_t left_bot = (uint32_t)(storage[row+1][0] >> 32);
+//             uint32_t right_bot = (uint32_t)(storage[row+1][0]);
+            
+//             // For wrapping from column 1
+//             uint32_t col1_left_top = (uint32_t)(storage[row-1][1] >> 32);
+//             uint32_t col1_left_mid = (uint32_t)(storage[row][1] >> 32);
+//             uint32_t col1_left_bot = (uint32_t)(storage[row+1][1] >> 32);
+            
+//             uint64_t output_val = 0;
+            
+//             // --- LEFT HALF (upper 32 bits) ---
+//             {
+//                 const uint32_t a0 = left_top >> 1;
+//                 const uint32_t a1 = left_top;
+//                 const uint32_t a2 = (left_top << 1) | (right_top >> 31);
+//                 const uint32_t a3 = left_mid >> 1;
+//                 const uint32_t center = left_mid;
+//                 const uint32_t a4 = (left_mid << 1) | (right_mid >> 31);
+//                 const uint32_t a5 = left_bot >> 1;
+//                 const uint32_t a6 = left_bot;
+//                 const uint32_t a7 = (left_bot << 1) | (right_bot >> 31);
+                
+//                 if (row == 1) {
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_left_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_left_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_left_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_left_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+//                 }
+                
+//                 uint32_t bottom_xor, bottom_maj;
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                
+//                 // Magic stage
+//                 uint32_t magic0, magic1, magic2, result;
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c0_left_mid_xor), "r"(bottom_xor), "r"(center));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c0_left_mid_maj), "r"(c0_left_top_maj));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                
+//                 output_val = ((uint64_t)result << 32);
+                
+//                 c0_left_top_xor = c0_left_mid_xor;
+//                 c0_left_mid_xor = bottom_xor;
+//                 c0_left_top_maj = c0_left_mid_maj;
+//                 c0_left_mid_maj = bottom_maj;
+//             }
+            
+//             // --- RIGHT HALF (lower 32 bits) ---
+//             {
+//                 const uint32_t a0 = (left_top << 31) | (right_top >> 1);
+//                 const uint32_t a1 = right_top;
+//                 const uint32_t a2 = (right_top << 1) | (col1_left_top >> 31);  // Wrap to column 1
+//                 const uint32_t a3 = (left_mid << 31) | (right_mid >> 1);
+//                 const uint32_t center = right_mid;
+//                 const uint32_t a4 = (right_mid << 1) | (col1_left_mid >> 31);
+//                 const uint32_t a5 = (left_bot << 31) | (right_bot >> 1);
+//                 const uint32_t a6 = right_bot;
+//                 const uint32_t a7 = (right_bot << 1) | (col1_left_bot >> 31);
+                
+//                 if (row == 1) {
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_right_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_right_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_right_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_right_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+//                 }
+                
+//                 uint32_t bottom_xor, bottom_maj;
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                
+//                 uint32_t magic0, magic1, magic2, result;
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c0_right_mid_xor), "r"(bottom_xor), "r"(center));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c0_right_mid_maj), "r"(c0_right_top_maj));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                
+//                 output_val |= (uint64_t)result;
+                
+//                 c0_right_top_xor = c0_right_mid_xor;
+//                 c0_right_mid_xor = bottom_xor;
+//                 c0_right_top_maj = c0_right_mid_maj;
+//                 c0_right_mid_maj = bottom_maj;
+//             }
+            
+//             output[row-1][0] = output_val;
+//         }
+        
+//         // ========== COLUMN 1 ==========
+//         {
+//             uint32_t left_top = (uint32_t)(storage[row-1][1] >> 32);
+//             uint32_t right_top = (uint32_t)(storage[row-1][1]);
+//             uint32_t left_mid = (uint32_t)(storage[row][1] >> 32);
+//             uint32_t right_mid = (uint32_t)(storage[row][1]);
+//             uint32_t left_bot = (uint32_t)(storage[row+1][1] >> 32);
+//             uint32_t right_bot = (uint32_t)(storage[row+1][1]);
+            
+//             // For wrapping from column 0
+//             uint32_t col0_right_top = (uint32_t)(storage[row-1][0]);
+//             uint32_t col0_right_mid = (uint32_t)(storage[row][0]);
+//             uint32_t col0_right_bot = (uint32_t)(storage[row+1][0]);
+            
+//             uint64_t output_val = 0;
+            
+//             // --- LEFT HALF (upper 32 bits) ---
+//             {
+//                 const uint32_t a0 = (col0_right_top << 1) | (left_top >> 31);  // Wrap from column 0
+//                 const uint32_t a1 = left_top;
+//                 const uint32_t a2 = (left_top << 1) | (right_top >> 31);
+//                 const uint32_t a3 = (col0_right_mid << 1) | (left_mid >> 31);
+//                 const uint32_t center = left_mid;
+//                 const uint32_t a4 = (left_mid << 1) | (right_mid >> 31);
+//                 const uint32_t a5 = (col0_right_bot << 1) | (left_bot >> 31);
+//                 const uint32_t a6 = left_bot;
+//                 const uint32_t a7 = (left_bot << 1) | (right_bot >> 31);
+                
+//                 if (row == 1) {
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_left_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_left_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_left_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_left_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+//                 }
+                
+//                 uint32_t bottom_xor, bottom_maj;
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                
+//                 uint32_t magic0, magic1, magic2, result;
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c1_left_mid_xor), "r"(bottom_xor), "r"(center));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c1_left_mid_maj), "r"(c1_left_top_maj));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                
+//                 output_val = ((uint64_t)result << 32);
+                
+//                 c1_left_top_xor = c1_left_mid_xor;
+//                 c1_left_mid_xor = bottom_xor;
+//                 c1_left_top_maj = c1_left_mid_maj;
+//                 c1_left_mid_maj = bottom_maj;
+//             }
+            
+//             // --- RIGHT HALF (lower 32 bits) ---
+//             {
+//                 const uint32_t a0 = (left_top << 31) | (right_top >> 1);
+//                 const uint32_t a1 = right_top;
+//                 const uint32_t a2 = right_top << 1;  // Wraps to column 0's left half
+//                 const uint32_t a3 = (left_mid << 31) | (right_mid >> 1);
+//                 const uint32_t center = right_mid;
+//                 const uint32_t a4 = right_mid << 1;
+//                 const uint32_t a5 = (left_bot << 31) | (right_bot >> 1);
+//                 const uint32_t a6 = right_bot;
+//                 const uint32_t a7 = right_bot << 1;
+                
+//                 if (row == 1) {
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_right_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_right_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_right_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+//                     asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_right_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+//                 }
+                
+//                 uint32_t bottom_xor, bottom_maj;
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                
+//                 uint32_t magic0, magic1, magic2, result;
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c1_right_mid_xor), "r"(bottom_xor), "r"(center));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c1_right_mid_maj), "r"(c1_right_top_maj));
+//                 asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                
+//                 output_val |= (uint64_t)result;
+                
+//                 c1_right_top_xor = c1_right_mid_xor;
+//                 c1_right_mid_xor = bottom_xor;
+//                 c1_right_top_maj = c1_right_mid_maj;
+//                 c1_right_mid_maj = bottom_maj;
+//             }
+            
+//             output[row-1][1] = output_val;
+//         }
+//     }
+    
+//     // Write outputs
+//     out10 = output[0][0]; out11 = output[0][1];
+//     out20 = output[1][0]; out21 = output[1][1];
+//     out30 = output[2][0]; out31 = output[2][1];
+//     out40 = output[3][0]; out41 = output[3][1];
+// }
+
+// __device__ inline void twoByFourCentalUpdate(uint64_t r00, uint64_t r01, uint64_t r10, uint64_t r11, uint64_t r20, uint64_t r21, uint64_t r30, uint64_t r31){
+//     uint64_t out00, out01, out10, out11;
+// }
 
 __global__ void multistepKernel(uint64_t* globalData, int height, int width, int steps, int iterations) {
     // Shared memory for 16 warps, each warp has 240 uint64_t (80 rows × 3 columns)
-   
+    __shared__ uint64_t warpStorage[16][256];
 
 
 //     // Start Y position of the tile including the 8-row halo above
@@ -334,67 +569,721 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width, int
     uint64_t* stuff;
     function(stuff, r00,r01)
     if (laneId == 0){
-        uint64_t r00 = warpStorage[warpId][(laneId * 8)]
-        uint64_t r01 = warpStorage[warpId][(laneId * 8) + 1]
-        uint64_t r10 = warpStorage[warpId][(laneId * 8) + 2]
-        uint64_t r11 = warpStorage[warpId][(laneId * 8) + 3]
-        uint64_t r20 = warpStorage[warpId][(laneId * 8) + 4]
-        uint64_t r21 = warpStorage[warpId][(laneId * 8) + 5]
-        uint64_t r30 = warpStorage[warpId][(laneId * 8) + 6]
-        uint64_t r31 = warpStorage[warpId][(laneId * 8) + 7]
-        uint64_t r40 = warpStorage[warpId][(laneId * 8) + 4]
-        uint64_t r41 = warpStorage[warpId][(laneId * 8) + 5]
-        uint64_t r50 = warpStorage[warpId][(laneId * 8) + 6]
-        uint64_t r51 = warpStorage[warpId][(laneId * 8) + 7]
+        uint64_t r00 = 0ULL;
+        uint64_t r01 = 0ULL;
+        uint64_t r10 = warpStorage[warpId][0]
+        uint64_t r11 = warpStorage[warpId][1]
+        uint64_t r20 = warpStorage[warpId][2]
+        uint64_t r21 = warpStorage[warpId][3]
+        uint64_t r30 = warpStorage[warpId][4]
+        uint64_t r31 = warpStorage[warpId][5]
+        uint64_t r40 = warpStorage[warpId][6]
+        uint64_t r41 = warpStorage[warpId][7]
+        uint64_t r50 = warpStorage[warpId][8]
+        uint64_t r51 = warpStorage[warpId][9]
 
+        for (int i = 0; i < 32; i++){
+            // Storage organized as [row][column]
+            uint64_t storage[6][2];
+            storage[0][0] = r00; storage[0][1] = r01;
+            storage[1][0] = r10; storage[1][1] = r11;
+            storage[2][0] = r20; storage[2][1] = r21;
+            storage[3][0] = r30; storage[3][1] = r31;
+            storage[4][0] = r40; storage[4][1] = r41;
+            storage[5][0] = r50; storage[5][1] = r51;
+            
+            uint64_t output[4][2];  // 4 output rows, 2 columns
+            
+            // Reuse chains for column 0
+            uint32_t c0_left_top_xor, c0_left_mid_xor, c0_left_top_maj, c0_left_mid_maj;
+            uint32_t c0_right_top_xor, c0_right_mid_xor, c0_right_top_maj, c0_right_mid_maj;
+            
+            // Reuse chains for column 1
+            uint32_t c1_left_top_xor, c1_left_mid_xor, c1_left_top_maj, c1_left_mid_maj;
+            uint32_t c1_right_top_xor, c1_right_mid_xor, c1_right_top_maj, c1_right_mid_maj;
+            
+            // Process 4 output rows
+            #pragma unroll //encourage compiler to unroll for loop and put into thraed registers check via compiling with: nvcc -Xptxas -v kernel.cu -o kernel.o, and executing it, should have line ptxas info
+            for (int row = 1; row <= 4; row++) {
+                
+                // ========== COLUMN 0 ==========
+                {
+                    // Split into 32-bit halves
+                    uint32_t left_top = (uint32_t)(storage[row-1][0] >> 32);
+                    uint32_t right_top = (uint32_t)(storage[row-1][0]);
+                    uint32_t left_mid = (uint32_t)(storage[row][0] >> 32);
+                    uint32_t right_mid = (uint32_t)(storage[row][0]);
+                    uint32_t left_bot = (uint32_t)(storage[row+1][0] >> 32);
+                    uint32_t right_bot = (uint32_t)(storage[row+1][0]);
+                    
+                    // For wrapping from column 1
+                    uint32_t col1_left_top = (uint32_t)(storage[row-1][1] >> 32);
+                    uint32_t col1_left_mid = (uint32_t)(storage[row][1] >> 32);
+                    uint32_t col1_left_bot = (uint32_t)(storage[row+1][1] >> 32);
+                    
+                    uint64_t output_val = 0;
+                    
+                    // --- LEFT HALF (upper 32 bits) ---
+                    {
+                        const uint32_t a0 = left_top >> 1;
+                        const uint32_t a1 = left_top;
+                        const uint32_t a2 = (left_top << 1) | (right_top >> 31);
+                        const uint32_t a3 = left_mid >> 1;
+                        const uint32_t center = left_mid;
+                        const uint32_t a4 = (left_mid << 1) | (right_mid >> 31);
+                        const uint32_t a5 = left_bot >> 1;
+                        const uint32_t a6 = left_bot;
+                        const uint32_t a7 = (left_bot << 1) | (right_bot >> 31);
+                        
+                        if (row == 1) {
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_left_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_left_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_left_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_left_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+                        }
+                        
+                        uint32_t bottom_xor, bottom_maj;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                        
+                        // Magic stage
+                        uint32_t magic0, magic1, magic2, result;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c0_left_mid_xor), "r"(bottom_xor), "r"(center));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c0_left_mid_maj), "r"(c0_left_top_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                        
+                        output_val = ((uint64_t)result << 32);
+                        
+                        c0_left_top_xor = c0_left_mid_xor;
+                        c0_left_mid_xor = bottom_xor;
+                        c0_left_top_maj = c0_left_mid_maj;
+                        c0_left_mid_maj = bottom_maj;
+                    }
+                    
+                    // --- RIGHT HALF (lower 32 bits) ---
+                    {
+                        const uint32_t a0 = (left_top << 31) | (right_top >> 1);
+                        const uint32_t a1 = right_top;
+                        const uint32_t a2 = (right_top << 1) | (col1_left_top >> 31);  // Wrap to column 1
+                        const uint32_t a3 = (left_mid << 31) | (right_mid >> 1);
+                        const uint32_t center = right_mid;
+                        const uint32_t a4 = (right_mid << 1) | (col1_left_mid >> 31);
+                        const uint32_t a5 = (left_bot << 31) | (right_bot >> 1);
+                        const uint32_t a6 = right_bot;
+                        const uint32_t a7 = (right_bot << 1) | (col1_left_bot >> 31);
+                        
+                        if (row == 1) {
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_right_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_right_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_right_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_right_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+                        }
+                        
+                        uint32_t bottom_xor, bottom_maj;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                        
+                        uint32_t magic0, magic1, magic2, result;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c0_right_mid_xor), "r"(bottom_xor), "r"(center));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c0_right_mid_maj), "r"(c0_right_top_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                        
+                        output_val |= (uint64_t)result;
+                        
+                        c0_right_top_xor = c0_right_mid_xor;
+                        c0_right_mid_xor = bottom_xor;
+                        c0_right_top_maj = c0_right_mid_maj;
+                        c0_right_mid_maj = bottom_maj;
+                    }
+                    
+                    output[row-1][0] = output_val;
+                }
+                
+                // ========== COLUMN 1 ==========
+                {
+                    uint32_t left_top = (uint32_t)(storage[row-1][1] >> 32);
+                    uint32_t right_top = (uint32_t)(storage[row-1][1]);
+                    uint32_t left_mid = (uint32_t)(storage[row][1] >> 32);
+                    uint32_t right_mid = (uint32_t)(storage[row][1]);
+                    uint32_t left_bot = (uint32_t)(storage[row+1][1] >> 32);
+                    uint32_t right_bot = (uint32_t)(storage[row+1][1]);
+                    
+                    // For wrapping from column 0
+                    uint32_t col0_right_top = (uint32_t)(storage[row-1][0]);
+                    uint32_t col0_right_mid = (uint32_t)(storage[row][0]);
+                    uint32_t col0_right_bot = (uint32_t)(storage[row+1][0]);
+                    
+                    uint64_t output_val = 0;
+                    
+                    // --- LEFT HALF (upper 32 bits) ---
+                    {
+                        const uint32_t a0 = (col0_right_top << 1) | (left_top >> 31);  // Wrap from column 0
+                        const uint32_t a1 = left_top;
+                        const uint32_t a2 = (left_top << 1) | (right_top >> 31);
+                        const uint32_t a3 = (col0_right_mid << 1) | (left_mid >> 31);
+                        const uint32_t center = left_mid;
+                        const uint32_t a4 = (left_mid << 1) | (right_mid >> 31);
+                        const uint32_t a5 = (col0_right_bot << 1) | (left_bot >> 31);
+                        const uint32_t a6 = left_bot;
+                        const uint32_t a7 = (left_bot << 1) | (right_bot >> 31);
+                        
+                        if (row == 1) {
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_left_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_left_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_left_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_left_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+                        }
+                        
+                        uint32_t bottom_xor, bottom_maj;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                        
+                        uint32_t magic0, magic1, magic2, result;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c1_left_mid_xor), "r"(bottom_xor), "r"(center));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c1_left_mid_maj), "r"(c1_left_top_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                        
+                        output_val = ((uint64_t)result << 32);
+                        
+                        c1_left_top_xor = c1_left_mid_xor;
+                        c1_left_mid_xor = bottom_xor;
+                        c1_left_top_maj = c1_left_mid_maj;
+                        c1_left_mid_maj = bottom_maj;
+                    }
+                    
+                    // --- RIGHT HALF (lower 32 bits) ---
+                    {
+                        const uint32_t a0 = (left_top << 31) | (right_top >> 1);
+                        const uint32_t a1 = right_top;
+                        const uint32_t a2 = right_top << 1;  // Wraps to column 0's left half
+                        const uint32_t a3 = (left_mid << 31) | (right_mid >> 1);
+                        const uint32_t center = right_mid;
+                        const uint32_t a4 = right_mid << 1;
+                        const uint32_t a5 = (left_bot << 31) | (right_bot >> 1);
+                        const uint32_t a6 = right_bot;
+                        const uint32_t a7 = right_bot << 1;
+                        
+                        if (row == 1) {
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_right_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_right_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_right_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_right_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+                        }
+                        
+                        uint32_t bottom_xor, bottom_maj;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                        
+                        uint32_t magic0, magic1, magic2, result;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c1_right_mid_xor), "r"(bottom_xor), "r"(center));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c1_right_mid_maj), "r"(c1_right_top_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                        
+                        output_val |= (uint64_t)result;
+                        
+                        c1_right_top_xor = c1_right_mid_xor;
+                        c1_right_mid_xor = bottom_xor;
+                        c1_right_top_maj = c1_right_mid_maj;
+                        c1_right_mid_maj = bottom_maj;
+                    }
+                    
+                    output[row-1][1] = output_val;
+                }
+            }
+            //warpshiftStuff
+        }
 
     }else if (laneId == 31){
-        uint64_t r00 = warpStorage[warpId][(laneId * 8)]
-        uint64_t r01 = warpStorage[warpId][(laneId * 8) + 1]
-        uint64_t r10 = warpStorage[warpId][(laneId * 8) + 2]
-        uint64_t r11 = warpStorage[warpId][(laneId * 8) + 3]
-        uint64_t r20 = warpStorage[warpId][(laneId * 8) + 4]
-        uint64_t r21 = warpStorage[warpId][(laneId * 8) + 5]
-        uint64_t r30 = warpStorage[warpId][(laneId * 8) + 6]
-        uint64_t r31 = warpStorage[warpId][(laneId * 8) + 7]
+        uint64_t r00 = warpStorage[warpId][246]
+        uint64_t r01 = warpStorage[warpId][247]
+        uint64_t r10 = warpStorage[warpId][248]
+        uint64_t r11 = warpStorage[warpId][249]
+        uint64_t r20 = warpStorage[warpId][250]
+        uint64_t r21 = warpStorage[warpId][251]
+        uint64_t r30 = warpStorage[warpId][252]
+        uint64_t r31 = warpStorage[warpId][253]
+        uint64_t r40 = warpStorage[warpId][254]
+        uint64_t r41 = warpStorage[warpId][255]
+        uint64_t r50 = 0ULL;
+        uint64_t r51 = 0ULL;
 
+        for (int i = 0; i < 32; i++){
+            // Storage organized as [row][column]
+            uint64_t storage[6][2];
+            storage[0][0] = r00; storage[0][1] = r01;
+            storage[1][0] = r10; storage[1][1] = r11;
+            storage[2][0] = r20; storage[2][1] = r21;
+            storage[3][0] = r30; storage[3][1] = r31;
+            storage[4][0] = r40; storage[4][1] = r41;
+            storage[5][0] = r50; storage[5][1] = r51;
+            
+            uint64_t output[4][2];  // 4 output rows, 2 columns
+            
+            // Reuse chains for column 0
+            uint32_t c0_left_top_xor, c0_left_mid_xor, c0_left_top_maj, c0_left_mid_maj;
+            uint32_t c0_right_top_xor, c0_right_mid_xor, c0_right_top_maj, c0_right_mid_maj;
+            
+            // Reuse chains for column 1
+            uint32_t c1_left_top_xor, c1_left_mid_xor, c1_left_top_maj, c1_left_mid_maj;
+            uint32_t c1_right_top_xor, c1_right_mid_xor, c1_right_top_maj, c1_right_mid_maj;
+            
+            // Process 4 output rows
+            #pragma unroll //encourage compiler to unroll for loop and put into thraed registers check via compiling with: nvcc -Xptxas -v kernel.cu -o kernel.o, and executing it, should have line ptxas info
+            for (int row = 1; row <= 4; row++) {
+                
+                // ========== COLUMN 0 ==========
+                {
+                    // Split into 32-bit halves
+                    uint32_t left_top = (uint32_t)(storage[row-1][0] >> 32);
+                    uint32_t right_top = (uint32_t)(storage[row-1][0]);
+                    uint32_t left_mid = (uint32_t)(storage[row][0] >> 32);
+                    uint32_t right_mid = (uint32_t)(storage[row][0]);
+                    uint32_t left_bot = (uint32_t)(storage[row+1][0] >> 32);
+                    uint32_t right_bot = (uint32_t)(storage[row+1][0]);
+                    
+                    // For wrapping from column 1
+                    uint32_t col1_left_top = (uint32_t)(storage[row-1][1] >> 32);
+                    uint32_t col1_left_mid = (uint32_t)(storage[row][1] >> 32);
+                    uint32_t col1_left_bot = (uint32_t)(storage[row+1][1] >> 32);
+                    
+                    uint64_t output_val = 0;
+                    
+                    // --- LEFT HALF (upper 32 bits) ---
+                    {
+                        const uint32_t a0 = left_top >> 1;
+                        const uint32_t a1 = left_top;
+                        const uint32_t a2 = (left_top << 1) | (right_top >> 31);
+                        const uint32_t a3 = left_mid >> 1;
+                        const uint32_t center = left_mid;
+                        const uint32_t a4 = (left_mid << 1) | (right_mid >> 31);
+                        const uint32_t a5 = left_bot >> 1;
+                        const uint32_t a6 = left_bot;
+                        const uint32_t a7 = (left_bot << 1) | (right_bot >> 31);
+                        
+                        if (row == 1) {
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_left_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_left_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_left_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_left_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+                        }
+                        
+                        uint32_t bottom_xor, bottom_maj;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                        
+                        // Magic stage
+                        uint32_t magic0, magic1, magic2, result;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c0_left_mid_xor), "r"(bottom_xor), "r"(center));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c0_left_mid_maj), "r"(c0_left_top_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                        
+                        output_val = ((uint64_t)result << 32);
+                        
+                        c0_left_top_xor = c0_left_mid_xor;
+                        c0_left_mid_xor = bottom_xor;
+                        c0_left_top_maj = c0_left_mid_maj;
+                        c0_left_mid_maj = bottom_maj;
+                    }
+                    
+                    // --- RIGHT HALF (lower 32 bits) ---
+                    {
+                        const uint32_t a0 = (left_top << 31) | (right_top >> 1);
+                        const uint32_t a1 = right_top;
+                        const uint32_t a2 = (right_top << 1) | (col1_left_top >> 31);  // Wrap to column 1
+                        const uint32_t a3 = (left_mid << 31) | (right_mid >> 1);
+                        const uint32_t center = right_mid;
+                        const uint32_t a4 = (right_mid << 1) | (col1_left_mid >> 31);
+                        const uint32_t a5 = (left_bot << 31) | (right_bot >> 1);
+                        const uint32_t a6 = right_bot;
+                        const uint32_t a7 = (right_bot << 1) | (col1_left_bot >> 31);
+                        
+                        if (row == 1) {
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_right_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_right_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_right_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_right_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+                        }
+                        
+                        uint32_t bottom_xor, bottom_maj;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                        
+                        uint32_t magic0, magic1, magic2, result;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c0_right_mid_xor), "r"(bottom_xor), "r"(center));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c0_right_mid_maj), "r"(c0_right_top_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                        
+                        output_val |= (uint64_t)result;
+                        
+                        c0_right_top_xor = c0_right_mid_xor;
+                        c0_right_mid_xor = bottom_xor;
+                        c0_right_top_maj = c0_right_mid_maj;
+                        c0_right_mid_maj = bottom_maj;
+                    }
+                    
+                    output[row-1][0] = output_val;
+                }
+                
+                // ========== COLUMN 1 ==========
+                {
+                    uint32_t left_top = (uint32_t)(storage[row-1][1] >> 32);
+                    uint32_t right_top = (uint32_t)(storage[row-1][1]);
+                    uint32_t left_mid = (uint32_t)(storage[row][1] >> 32);
+                    uint32_t right_mid = (uint32_t)(storage[row][1]);
+                    uint32_t left_bot = (uint32_t)(storage[row+1][1] >> 32);
+                    uint32_t right_bot = (uint32_t)(storage[row+1][1]);
+                    
+                    // For wrapping from column 0
+                    uint32_t col0_right_top = (uint32_t)(storage[row-1][0]);
+                    uint32_t col0_right_mid = (uint32_t)(storage[row][0]);
+                    uint32_t col0_right_bot = (uint32_t)(storage[row+1][0]);
+                    
+                    uint64_t output_val = 0;
+                    
+                    // --- LEFT HALF (upper 32 bits) ---
+                    {
+                        const uint32_t a0 = (col0_right_top << 1) | (left_top >> 31);  // Wrap from column 0
+                        const uint32_t a1 = left_top;
+                        const uint32_t a2 = (left_top << 1) | (right_top >> 31);
+                        const uint32_t a3 = (col0_right_mid << 1) | (left_mid >> 31);
+                        const uint32_t center = left_mid;
+                        const uint32_t a4 = (left_mid << 1) | (right_mid >> 31);
+                        const uint32_t a5 = (col0_right_bot << 1) | (left_bot >> 31);
+                        const uint32_t a6 = left_bot;
+                        const uint32_t a7 = (left_bot << 1) | (right_bot >> 31);
+                        
+                        if (row == 1) {
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_left_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_left_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_left_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_left_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+                        }
+                        
+                        uint32_t bottom_xor, bottom_maj;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                        
+                        uint32_t magic0, magic1, magic2, result;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c1_left_mid_xor), "r"(bottom_xor), "r"(center));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c1_left_mid_maj), "r"(c1_left_top_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                        
+                        output_val = ((uint64_t)result << 32);
+                        
+                        c1_left_top_xor = c1_left_mid_xor;
+                        c1_left_mid_xor = bottom_xor;
+                        c1_left_top_maj = c1_left_mid_maj;
+                        c1_left_mid_maj = bottom_maj;
+                    }
+                    
+                    // --- RIGHT HALF (lower 32 bits) ---
+                    {
+                        const uint32_t a0 = (left_top << 31) | (right_top >> 1);
+                        const uint32_t a1 = right_top;
+                        const uint32_t a2 = right_top << 1;  // Wraps to column 0's left half
+                        const uint32_t a3 = (left_mid << 31) | (right_mid >> 1);
+                        const uint32_t center = right_mid;
+                        const uint32_t a4 = right_mid << 1;
+                        const uint32_t a5 = (left_bot << 31) | (right_bot >> 1);
+                        const uint32_t a6 = right_bot;
+                        const uint32_t a7 = right_bot << 1;
+                        
+                        if (row == 1) {
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_right_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_right_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_right_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_right_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+                        }
+                        
+                        uint32_t bottom_xor, bottom_maj;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                        
+                        uint32_t magic0, magic1, magic2, result;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c1_right_mid_xor), "r"(bottom_xor), "r"(center));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c1_right_mid_maj), "r"(c1_right_top_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                        
+                        output_val |= (uint64_t)result;
+                        
+                        c1_right_top_xor = c1_right_mid_xor;
+                        c1_right_mid_xor = bottom_xor;
+                        c1_right_top_maj = c1_right_mid_maj;
+                        c1_right_mid_maj = bottom_maj;
+                    }
+                    
+                    output[row-1][1] = output_val;
+                }
+            }
+            //warpshiftStuff
+        }
+        
 
     }else{
-        uint64_t r00 = warpStorage[warpId][(laneId * 8)]
-        uint64_t r01 = warpStorage[warpId][(laneId * 8) + 1]
-        uint64_t r10 = warpStorage[warpId][(laneId * 8) + 2]
-        uint64_t r11 = warpStorage[warpId][(laneId * 8) + 3]
-        uint64_t r20 = warpStorage[warpId][(laneId * 8) + 4]
-        uint64_t r21 = warpStorage[warpId][(laneId * 8) + 5]
-        uint64_t r30 = warpStorage[warpId][(laneId * 8) + 6]
-        uint64_t r31 = warpStorage[warpId][(laneId * 8) + 7]
-        uint64_t r40 = warpStorage[warpId][(laneId * 8) + 4]
-        uint64_t r41 = warpStorage[warpId][(laneId * 8) + 5]
-        uint64_t r50 = warpStorage[warpId][(laneId * 8) + 6]
-        uint64_t r51 = warpStorage[warpId][(laneId * 8) + 7]
+        uint64_t r00 = warpStorage[warpId][(laneId * 8) - 2]
+        uint64_t r01 = warpStorage[warpId][(laneId * 8) - 1]
+        uint64_t r10 = warpStorage[warpId][(laneId * 8)]
+        uint64_t r11 = warpStorage[warpId][(laneId * 8) + 1]
+        uint64_t r20 = warpStorage[warpId][(laneId * 8) + 2]
+        uint64_t r21 = warpStorage[warpId][(laneId * 8) + 3]
+        uint64_t r30 = warpStorage[warpId][(laneId * 8) + 4]
+        uint64_t r31 = warpStorage[warpId][(laneId * 8) + 5]
+        uint64_t r40 = warpStorage[warpId][(laneId * 8) + 6]
+        uint64_t r41 = warpStorage[warpId][(laneId * 8) + 7]
+        uint64_t r50 = warpStorage[warpId][(laneId * 8) + 8]
+        uint64_t r51 = warpStorage[warpId][(laneId * 8) + 9]
 
-        
+        for (int i = 0; i < 32; i++){
+            // Storage organized as [row][column]
+            uint64_t storage[6][2];
+            storage[0][0] = r00; storage[0][1] = r01;
+            storage[1][0] = r10; storage[1][1] = r11;
+            storage[2][0] = r20; storage[2][1] = r21;
+            storage[3][0] = r30; storage[3][1] = r31;
+            storage[4][0] = r40; storage[4][1] = r41;
+            storage[5][0] = r50; storage[5][1] = r51;
+            
+            uint64_t output[4][2];  // 4 output rows, 2 columns
+            
+            // Reuse chains for column 0
+            uint32_t c0_left_top_xor, c0_left_mid_xor, c0_left_top_maj, c0_left_mid_maj;
+            uint32_t c0_right_top_xor, c0_right_mid_xor, c0_right_top_maj, c0_right_mid_maj;
+            
+            // Reuse chains for column 1
+            uint32_t c1_left_top_xor, c1_left_mid_xor, c1_left_top_maj, c1_left_mid_maj;
+            uint32_t c1_right_top_xor, c1_right_mid_xor, c1_right_top_maj, c1_right_mid_maj;
+            
+            // Process 4 output rows
+            #pragma unroll //encourage compiler to unroll for loop and put into thraed registers check via compiling with: nvcc -Xptxas -v kernel.cu -o kernel.o, and executing it, should have line ptxas info
+            for (int row = 1; row <= 4; row++) {
+                
+                // ========== COLUMN 0 ==========
+                {
+                    // Split into 32-bit halves
+                    uint32_t left_top = (uint32_t)(storage[row-1][0] >> 32);
+                    uint32_t right_top = (uint32_t)(storage[row-1][0]);
+                    uint32_t left_mid = (uint32_t)(storage[row][0] >> 32);
+                    uint32_t right_mid = (uint32_t)(storage[row][0]);
+                    uint32_t left_bot = (uint32_t)(storage[row+1][0] >> 32);
+                    uint32_t right_bot = (uint32_t)(storage[row+1][0]);
+                    
+                    // For wrapping from column 1
+                    uint32_t col1_left_top = (uint32_t)(storage[row-1][1] >> 32);
+                    uint32_t col1_left_mid = (uint32_t)(storage[row][1] >> 32);
+                    uint32_t col1_left_bot = (uint32_t)(storage[row+1][1] >> 32);
+                    
+                    uint64_t output_val = 0;
+                    
+                    // --- LEFT HALF (upper 32 bits) ---
+                    {
+                        const uint32_t a0 = left_top >> 1;
+                        const uint32_t a1 = left_top;
+                        const uint32_t a2 = (left_top << 1) | (right_top >> 31);
+                        const uint32_t a3 = left_mid >> 1;
+                        const uint32_t center = left_mid;
+                        const uint32_t a4 = (left_mid << 1) | (right_mid >> 31);
+                        const uint32_t a5 = left_bot >> 1;
+                        const uint32_t a6 = left_bot;
+                        const uint32_t a7 = (left_bot << 1) | (right_bot >> 31);
+                        
+                        if (row == 1) {
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_left_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_left_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_left_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_left_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+                        }
+                        
+                        uint32_t bottom_xor, bottom_maj;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                        
+                        // Magic stage
+                        uint32_t magic0, magic1, magic2, result;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c0_left_mid_xor), "r"(bottom_xor), "r"(center));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c0_left_mid_maj), "r"(c0_left_top_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                        
+                        output_val = ((uint64_t)result << 32);
+                        
+                        c0_left_top_xor = c0_left_mid_xor;
+                        c0_left_mid_xor = bottom_xor;
+                        c0_left_top_maj = c0_left_mid_maj;
+                        c0_left_mid_maj = bottom_maj;
+                    }
+                    
+                    // --- RIGHT HALF (lower 32 bits) ---
+                    {
+                        const uint32_t a0 = (left_top << 31) | (right_top >> 1);
+                        const uint32_t a1 = right_top;
+                        const uint32_t a2 = (right_top << 1) | (col1_left_top >> 31);  // Wrap to column 1
+                        const uint32_t a3 = (left_mid << 31) | (right_mid >> 1);
+                        const uint32_t center = right_mid;
+                        const uint32_t a4 = (right_mid << 1) | (col1_left_mid >> 31);
+                        const uint32_t a5 = (left_bot << 31) | (right_bot >> 1);
+                        const uint32_t a6 = right_bot;
+                        const uint32_t a7 = (right_bot << 1) | (col1_left_bot >> 31);
+                        
+                        if (row == 1) {
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_right_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_right_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c0_right_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c0_right_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+                        }
+                        
+                        uint32_t bottom_xor, bottom_maj;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                        
+                        uint32_t magic0, magic1, magic2, result;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c0_right_mid_xor), "r"(bottom_xor), "r"(center));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c0_right_mid_maj), "r"(c0_right_top_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                        
+                        output_val |= (uint64_t)result;
+                        
+                        c0_right_top_xor = c0_right_mid_xor;
+                        c0_right_mid_xor = bottom_xor;
+                        c0_right_top_maj = c0_right_mid_maj;
+                        c0_right_mid_maj = bottom_maj;
+                    }
+                    
+                    output[row-1][0] = output_val;
+                }
+                
+                // ========== COLUMN 1 ==========
+                {
+                    uint32_t left_top = (uint32_t)(storage[row-1][1] >> 32);
+                    uint32_t right_top = (uint32_t)(storage[row-1][1]);
+                    uint32_t left_mid = (uint32_t)(storage[row][1] >> 32);
+                    uint32_t right_mid = (uint32_t)(storage[row][1]);
+                    uint32_t left_bot = (uint32_t)(storage[row+1][1] >> 32);
+                    uint32_t right_bot = (uint32_t)(storage[row+1][1]);
+                    
+                    // For wrapping from column 0
+                    uint32_t col0_right_top = (uint32_t)(storage[row-1][0]);
+                    uint32_t col0_right_mid = (uint32_t)(storage[row][0]);
+                    uint32_t col0_right_bot = (uint32_t)(storage[row+1][0]);
+                    
+                    uint64_t output_val = 0;
+                    
+                    // --- LEFT HALF (upper 32 bits) ---
+                    {
+                        const uint32_t a0 = (col0_right_top << 1) | (left_top >> 31);  // Wrap from column 0
+                        const uint32_t a1 = left_top;
+                        const uint32_t a2 = (left_top << 1) | (right_top >> 31);
+                        const uint32_t a3 = (col0_right_mid << 1) | (left_mid >> 31);
+                        const uint32_t center = left_mid;
+                        const uint32_t a4 = (left_mid << 1) | (right_mid >> 31);
+                        const uint32_t a5 = (col0_right_bot << 1) | (left_bot >> 31);
+                        const uint32_t a6 = left_bot;
+                        const uint32_t a7 = (left_bot << 1) | (right_bot >> 31);
+                        
+                        if (row == 1) {
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_left_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_left_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_left_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_left_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+                        }
+                        
+                        uint32_t bottom_xor, bottom_maj;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                        
+                        uint32_t magic0, magic1, magic2, result;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c1_left_mid_xor), "r"(bottom_xor), "r"(center));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c1_left_mid_maj), "r"(c1_left_top_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                        
+                        output_val = ((uint64_t)result << 32);
+                        
+                        c1_left_top_xor = c1_left_mid_xor;
+                        c1_left_mid_xor = bottom_xor;
+                        c1_left_top_maj = c1_left_mid_maj;
+                        c1_left_mid_maj = bottom_maj;
+                    }
+                    
+                    // --- RIGHT HALF (lower 32 bits) ---
+                    {
+                        const uint32_t a0 = (left_top << 31) | (right_top >> 1);
+                        const uint32_t a1 = right_top;
+                        const uint32_t a2 = right_top << 1;  // Wraps to column 0's left half
+                        const uint32_t a3 = (left_mid << 31) | (right_mid >> 1);
+                        const uint32_t center = right_mid;
+                        const uint32_t a4 = right_mid << 1;
+                        const uint32_t a5 = (left_bot << 31) | (right_bot >> 1);
+                        const uint32_t a6 = right_bot;
+                        const uint32_t a7 = right_bot << 1;
+                        
+                        if (row == 1) {
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_right_top_xor) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_right_top_maj) : "r"(a2), "r"(a1), "r"(a0));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(c1_right_mid_xor) : "r"(a4), "r"(a3), "r"(center));
+                            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(c1_right_mid_maj) : "r"(a4), "r"(a3), "r"(center));
+                        }
+                        
+                        uint32_t bottom_xor, bottom_maj;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+                        
+                        uint32_t magic0, magic1, magic2, result;
+                        asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(c1_right_mid_xor), "r"(bottom_xor), "r"(center));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(bottom_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c1_right_mid_maj), "r"(c1_right_top_maj));
+                        asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
+                        
+                        output_val |= (uint64_t)result;
+                        
+                        c1_right_top_xor = c1_right_mid_xor;
+                        c1_right_mid_xor = bottom_xor;
+                        c1_right_top_maj = c1_right_mid_maj;
+                        c1_right_mid_maj = bottom_maj;
+                    }
+                    
+                    output[row-1][1] = output_val;
+                }
+            }
+            //warpshiftStuff
+        }
+
+        if ((laneId >= 8) && (laneId < 24)){
+            uint64_t row1Final = r10 << 32 | r11 >> 32;
+            uint64_t row2Final = r20 << 32 | r21 >> 32;
+            uint64_t row3Final = r30 << 32 | r31 >> 32;
+            uint64_t row4Final = r40 << 32 | r41 >> 32;
+            globalData[((centralWarpStartY) * width) + globalX] = row1Final;
+            globalData[((centralWarpStartY + 1) * width) + globalX] = row2Final;
+            globalData[((centralWarpStartY + 2) * width) + globalX] = row3Final;
+            globalData[((centralWarpStartY + 3) * width) + globalX] = row4Final;
+
+        }
     }
 
-    if ((laneId >= 8) && (laneId < 24)){
-        warpStorage[warpId][((laneId - 8) * 4)] = 
-        warpStorage[warpId][((laneId - 8) * 4) + 1] = 
-        warpStorage[warpId][((laneId - 8) * 4) + 2] = 
-        warpStorage[warpId][((laneId - 8) * 4) + 3] = 
-    }
+    // if ((laneId >= 8) && (laneId < 24)){
+    //     warpStorage[warpId][((laneId - 8) * 4)] = 
+    //     warpStorage[warpId][((laneId - 8) * 4) + 1] = 
+    //     warpStorage[warpId][((laneId - 8) * 4) + 2] = 
+    //     warpStorage[warpId][((laneId - 8) * 4) + 3] = 
+    // }
 
-    //------------Do computation and write back to shared memory----------------
+    // int localStartY = 8 + laneId * 2; 
 
+    // for (int i = 0; i < 2; ++i) {
+    //     int localY = localStartY + i;          
+    //     int globalY = (haloStartY + localY) & (height - 1);  // Use haloStartY + localY
+    //     globalData[globalY * width + globalX] = warpStorage[warpId][localY * 3 + 1];
+    // }
 
-
-    //--------------------------------------------------------------------------
-    int localStartY = 8 + laneId * 2; 
-
-    for (int i = 0; i < 2; ++i) {
-        int localY = localStartY + i;          
-        int globalY = (haloStartY + localY) & (height - 1);  // Use haloStartY + localY
-        globalData[globalY * width + globalX] = warpStorage[warpId][localY * 3 + 1];
-    }
 
 }
 
