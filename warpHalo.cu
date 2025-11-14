@@ -14,21 +14,21 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width) {
     // Shared memory for 16 warps, each warp has 256 uint64_t (128 rows × 2 columns)
     __shared__ uint64_t warpStorage[16][256];
 
-
     // Thread/block coordinates
     int tx = threadIdx.x;
     int ty = threadIdx.y;
 
     // Warp identification
-    int warpId = (ty / 32) + (tx * 4);  // 16 warps per block
-    int laneId = ty % 32;               // 0–31 within the warp
+    int warpId = (ty >> 5) + (tx * 4);  // 16 warps per block
+    int laneId = ty & 31;  // 31 is 0x1F, which is 2^5 - 1 (binary: 11111)
+    // int laneId = constrainValue(ty, 32);               // 0–31 within the warp
 
     // Global grid position
     int globalX = (blockIdx.x * blockDim.x) + tx;
     int globalXleft  = (globalX - 1) & (width - 1); // X neighbors (wrap-around since width is power of 2)
     int globalXright = (globalX + 1) & (width - 1); // X neighbors (wrap-around since width is power of 2)
 
-    float yQuarter = (ty / 32) / 4.0f;
+    float yQuarter = (ty >> 5) / 4.0f;
     int centralWarpStartY = (blockIdx.y * 2 * blockDim.y) + (256 * yQuarter);
     int centralWarpEndY = centralWarpStartY + 64;
 
@@ -46,7 +46,7 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width) {
     }
 
     __syncthreads();
-
+    //printf("heuhjbef");
     uint64_t r00;
     uint64_t r01;
     uint64_t r50;
@@ -97,10 +97,10 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width) {
         uint32_t c1_right_top_xor, c1_right_mid_xor, c1_right_top_maj, c1_right_mid_maj;
         
         // Process 4 output rows
-        #pragma unroll //encourage compiler to unroll for loop and put into thraed registers check via compiling with: nvcc -Xptxas -v kernel.cu -o kernel.o, and executing it, should have line ptxas info
+        #pragma unroll 4 //encourage compiler to unroll for loop (for all 4 iterations) and put into thraed registers check via compiling with: nvcc -Xptxas -v kernel.cu -o kernel.o, and executing it, should have line ptxas info
         for (int row = 1; row <= 4; row++) {
             
-            // ========== COLUMN 0 ==========
+            // ========== COLUMN 0 (rx0) ==========
             {
                 // Split into 32-bit halves
                 uint32_t left_top = (uint32_t)(storage[row-1][0] >> 32);
@@ -117,7 +117,7 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width) {
                 
                 uint64_t output_val = 0;
                 
-                // --- LEFT HALF (upper 32 bits) ---
+                // --- LEFT HALF (upper / left 32 bits) ---
                 {
                     const uint32_t a0 = left_top >> 1;
                     const uint32_t a1 = left_top;
@@ -155,7 +155,7 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width) {
                     c0_left_mid_maj = bottom_maj;
                 }
                 
-                // --- RIGHT HALF (lower 32 bits) ---
+                // --- RIGHT HALF (lower / right 32 bits) ---
                 {
                     const uint32_t a0 = (left_top << 31) | (right_top >> 1);
                     const uint32_t a1 = right_top;
@@ -184,7 +184,7 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width) {
                     asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(c0_right_mid_maj), "r"(c0_right_top_maj));
                     asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result) : "r"(magic2), "r"(magic0), "r"(magic1));
                     
-                    output_val |= (uint64_t)result;
+                    output_val |= (uint64_t)result;;    
                     
                     c0_right_top_xor = c0_right_mid_xor;
                     c0_right_mid_xor = bottom_xor;
@@ -195,7 +195,7 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width) {
                 output[row-1][0] = output_val;
             }
             
-            // ========== COLUMN 1 ==========
+            // ========== COLUMN 1 (rx1) ==========
             {
                 uint32_t left_top = (uint32_t)(storage[row-1][1] >> 32);
                 uint32_t right_top = (uint32_t)(storage[row-1][1]);
@@ -211,7 +211,7 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width) {
                 
                 uint64_t output_val = 0;
                 
-                // --- LEFT HALF (upper 32 bits) ---
+                // --- LEFT HALF (upper / left 32 bits) ---
                 {
                     const uint32_t a0 = (col0_right_top << 1) | (left_top >> 31);  // Wrap from column 0
                     const uint32_t a1 = left_top;
@@ -248,7 +248,7 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width) {
                     c1_left_mid_maj = bottom_maj;
                 }
                 
-                // --- RIGHT HALF (lower 32 bits) ---
+                // --- RIGHT HALF (lower / right 32 bits) ---
                 {
                     const uint32_t a0 = (left_top << 31) | (right_top >> 1);
                     const uint32_t a1 = right_top;
@@ -288,6 +288,7 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width) {
                 output[row-1][1] = output_val;
             }
         }
+        
         r10 = output[1][0];
         r11 = output[1][1];
         r20 = output[2][0];
@@ -340,96 +341,26 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width) {
     }
 }
 
-
-void gol(uint64_t **current_ptr, uint64_t **next_ptr, int width, int height, int iterations) {
-    uint64_t *current = *current_ptr;
+extern "C" void gol(uint64_t *current_ptr, int width, int height, int iterations) {
     size_t size = (width / 64) * height * sizeof(uint64_t);
     width = width / 64;
     uint64_t *d_current;
     cudaMalloc(&d_current, size);
 
-    cudaMemcpy(d_current, *current_ptr, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_current, current_ptr, size, cudaMemcpyHostToDevice);
 
     dim3 blockDim(4, 128);
     dim3 gridDim(64,64);
-
 
     for (int iteration = 0; iteration < iterations; iteration+=32) {
         multistepKernel<<<gridDim, blockDim>>>(d_current, height, width);
         cudaDeviceSynchronize();
     }
-    cudaMemcpy(*current_ptr, d_current, size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(current_ptr, d_current, size, cudaMemcpyDeviceToHost);
 
     cudaFree(d_current);
 }
 
-int main() {
-    // --- Simulation parameters ---
-    const int height = 16384;
-    const int width_bits = 16384;
-    const int width = width_bits / 64;  // number of 64-bit words per row
-    const int iterations = 1024;        // total generations to simulate
+// nvcc -O3 -arch=sm_86 -Xptxas -fopenmp -v warpHalo.cu -o gol_sim
 
-    const size_t numElements = (size_t)height * width;
-    const size_t dataSize = numElements * sizeof(uint64_t);
-
-    printf("Grid size: %d x %d bits (%zu bytes)\n", height, width_bits, dataSize);
-
-    // --- Allocate and initialize host memory ---
-    uint64_t *h_current = (uint64_t*)malloc(dataSize);
-    if (!h_current) {
-        fprintf(stderr, "Host allocation failed!\n");
-        return 1;
-    }
-
-    // Fill with random pattern
-    for (size_t i = 0; i < numElements; ++i)
-        h_current[i] = ((uint64_t)rand() << 32) ^ rand();
-
-    // --- Allocate device memory ---
-    uint64_t *d_current = nullptr;
-    cudaMalloc(&d_current, dataSize);
-    cudaMemcpy(d_current, h_current, dataSize, cudaMemcpyHostToDevice);
-
-    // --- Timing setup ---
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
-
-    // --- Run the simulation ---
-    gol(d_current, height, width, iterations);
-
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float ms = 0.0f;
-    cudaEventElapsedTime(&ms, start, stop);
-
-    // --- Copy results back ---
-    cudaMemcpy(h_current, d_current, dataSize, cudaMemcpyDeviceToHost);
-
-    // --- Display a small 8×8 block as a sanity check ---
-    printf("Result snapshot (8x8 bits from top-left corner):\n");
-    for (int y = 0; y < 8; ++y) {
-        uint64_t word = h_current[y * width];
-        for (int x = 0; x < 8; ++x) {
-            int bit = (word >> (63 - x)) & 1;
-            printf("%d", bit);
-        }
-        printf("\n");
-    }
-
-    printf("Kernel time: %.3f ms for %d iterations (%.3f µs/step)\n",
-           ms, iterations, (ms * 1000.0f) / iterations);
-
-    // --- Cleanup ---
-    cudaFree(d_current);
-    free(h_current);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-    cudaDeviceReset();
-
-    return 0;
-}
-
-// nvcc -O3 -arch=sm_86 -Xptxas -v your_file.cu -o gol_sim
+//
