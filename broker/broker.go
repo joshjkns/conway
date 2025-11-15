@@ -141,7 +141,7 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 		// call function on all workers (they work together and do ALL moves before returning)
 		// - have to send neighbours addresses or rpc client stuff so they can call each other.
 		for data, worker := range b.workers {
-			go worker.Go("Worker.GameOfLife", argArray[data.ID], &replyArray[data.ID], channels[data.ID])
+			worker.Go("Worker.GameOfLife", argArray[data.ID], &replyArray[data.ID], channels[data.ID])
 		}
 
 		// check all channels are done
@@ -191,6 +191,19 @@ func main() {
 	b := &Broker{workers: make(map[stubs.Data]*rpc.Client), currentID: 0, currentTurns: 1}
 	b.cond = sync.NewCond(&b.mu)
 	b.pausedCond = sync.NewCond(&b.pausedMu)
+
+	// due to firewall issue
+	var err error
+	b.workers[stubs.Data{ID: 0, Address: "98.92.247.214:8030"}], err = rpc.Dial("tcp", "98.92.247.214:8030")
+	if err != nil {
+		print(err)
+	}
+	b.workers[stubs.Data{ID: 1, Address: "34.237.53.207:8031"}], err = rpc.Dial("tcp", "34.237.53.207:8031")
+	if err != nil {
+		panic(err)
+	}
+	// b.workers[stubs.Data{ID: 3, Address: "3.236.240.172:8032"}], _ = rpc.Dial("tcp", "3.236.240.172:8032")
+	// b.workers[stubs.Data{ID: 4, Address: "35.174.61.28:8033"}], _ = rpc.Dial("tcp", "35.174.61.28:8033")
 	rpc.Register(b)
 
 	// args

@@ -122,23 +122,23 @@ func main() {
 	defer listener.Close()
 	fmt.Println("[Worker] - Listening on port ", *ip)
 
-	// dial the broker
-	broker, err := rpc.Dial("tcp", "localhost:8029")
-	if err != nil {
-		panic(err)
-	}
-	w.broker = broker
-	fmt.Println("[Worker] - Dialed broker successfully.")
+	// // dial the broker
+	// broker, err := rpc.Dial("tcp", "localhost:8029")
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// w.broker = broker
+	// fmt.Println("[Worker] - Dialed broker successfully.")
 
-	// define args and reply for the registration
-	args := stubs.WorkerInfo{Address: *ip}
-	reply := stubs.Confirmation{}
+	// // define args and reply for the registration
+	// args := stubs.WorkerInfo{Address: *ip}
+	// reply := stubs.Confirmation{}
 
-	// register the worker with the broker (ids will be sorted on the broker side)
-	broker.Call("Broker.Register", args, &reply)
+	// // register the worker with the broker (ids will be sorted on the broker side)
+	// broker.Call("Broker.Register", args, &reply)
 
-	// set the workers id locally
-	w.id = reply.ID
+	// // set the workers id locally
+	// w.id = reply.ID
 
 	go rpc.Accept(listener)
 
