@@ -194,14 +194,14 @@ func main() {
 
 	// due to firewall issue
 	var err error
-	b.workers[stubs.Data{ID: 0, Address: "98.92.247.214:8030"}], err = rpc.Dial("tcp", "98.92.247.214:8030")
+	b.workers[stubs.Data{ID: 0, Address: "3.236.170.65:8030"}], err = rpc.Dial("tcp", "3.236.170.65:8030")
 	if err != nil {
 		print(err)
 	}
-	b.workers[stubs.Data{ID: 1, Address: "34.237.53.207:8031"}], err = rpc.Dial("tcp", "34.237.53.207:8031")
-	if err != nil {
-		panic(err)
-	}
+	// b.workers[stubs.Data{ID: 1, Address: "34.237.53.207:8031"}], err = rpc.Dial("tcp", "34.237.53.207:8031")
+	// if err != nil {
+	// 	panic(err)
+	// }
 	// b.workers[stubs.Data{ID: 3, Address: "3.236.240.172:8032"}], _ = rpc.Dial("tcp", "3.236.240.172:8032")
 	// b.workers[stubs.Data{ID: 4, Address: "35.174.61.28:8033"}], _ = rpc.Dial("tcp", "35.174.61.28:8033")
 	rpc.Register(b)
