@@ -29,6 +29,8 @@ var offsets = [8][2]int{
 	{1, -1}, {1, 0}, {1, 1},
 }
 
+var mu sync.RWMutex
+
 func incrementGol(world, result *[][]byte, p *Params, startRow, endRow int) {
 	for y := startRow; y <= endRow; y++ {
 		for x := 0; x < (*p).ImageWidth; x++ {
@@ -84,6 +86,8 @@ func countLiveNeighbours(world [][]byte, x int, y int, p *Params) int {
 }
 
 func getAliveCells(world *[][]byte, p *Params) []util.Cell {
+	mu.RLock()
+	defer mu.RUnlock()
 	var alive []util.Cell
 	for y := 0; y < (*p).ImageHeight; y++ {
 		for x := 0; x < (*p).ImageWidth; x++ {
@@ -98,14 +102,13 @@ func getAliveCells(world *[][]byte, p *Params) []util.Cell {
 
 func worker(world, result *[][]byte, p *Params, jobs <-chan Pair, wg *sync.WaitGroup) {
 	for j := range jobs {
-		func() {
 			incrementGol(world, result, p, j.startRow, j.endRow)
-			defer wg.Done()
-		}()
-
+			wg.Done()
 	}
 }
 func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
+	mu.RLock()
+	defer mu.RUnlock()
 	(*c).ioCommand <- ioOutput
 	filename := strconv.Itoa((*p).ImageWidth) + "x" + strconv.Itoa((*p).ImageHeight) + "x" + strconv.Itoa(*turns)
 	(*c).ioFilename <- filename
@@ -155,47 +158,88 @@ func distributor(p Params, c distributorChannels) {
 
 	//create a ticker to track time
 	ticker := time.NewTicker(2 * time.Second)
-	//tickerStop := make(chan bool)
+	done := make(chan bool)
+	paused := make(chan bool)
+	resumed := make(chan bool)
+	quit := make(chan bool)
 
-	for i := 1; i <= p.Turns; i++ {
-		select {
-		case <-ticker.C:
-			c.events <- AliveCellsCount{CellsCount: len(getAliveCells(&world, &p)), CompletedTurns: turn}
-		case kp := <-c.keyPresses:
-			switch kp {
-			case 's':
-				{
-					pgmImage(&p, &world, &c, &turn)
-				}
-			case 'q':
-				{
-					c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&world, &p)}
-					pgmImage(&p, &world, &c, &turn)
-					c.events <- StateChange{CompletedTurns: turn, NewState: Quitting}
-					return
-				}
-			case 'p':
-				{
-					c.events <- StateChange{CompletedTurns: turn, NewState: Paused}
-					for {
-						kp := <-c.keyPresses
-						if kp == 'p' {
-							break
-						}
-						if kp == 's' {
-							pgmImage(&p, &world, &c, &turn)
-						}
-						if kp == 'q' {
-							c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&world, &p)}
-							pgmImage(&p, &world, &c, &turn)
-							c.events <- StateChange{CompletedTurns: turn, NewState: Quitting}
-							return
+	go func() {
+		for {
+			select {
+					case <- done:
+						return
+					case <-ticker.C:
+						mu.RLock()
+						currentTurn := turn
+						mu.RUnlock()
+						c.events <- AliveCellsCount{CellsCount: len(getAliveCells(&world, &p)), CompletedTurns: currentTurn}
+					case kp := <-c.keyPresses:
+						switch kp {
+						case 's':
+							{
+								mu.RLock()
+								currentTurn := turn
+								mu.RUnlock()
+								pgmImage(&p, &world, &c, &currentTurn)
+							}
+						case 'q':
+							{
+								mu.RLock()
+								currentTurn := turn + 1
+								mu.RUnlock()
+								c.events <- FinalTurnComplete{CompletedTurns: currentTurn, Alive: getAliveCells(&world, &p)}
+								pgmImage(&p, &world, &c, &currentTurn)
+								c.events <- StateChange{CompletedTurns: currentTurn, NewState: Quitting}
+								quit <- true
+								close(done)
+        				return
+							}
+						case 'p':
+							{
+								mu.RLock()
+								currentTurn := turn + 1
+								mu.RUnlock()
+								c.events <- StateChange{CompletedTurns: currentTurn, NewState: Paused}
+								paused <- true
+								for {
+									kp := <-c.keyPresses
+									if kp == 'p' {
+										c.events <- StateChange{CompletedTurns: currentTurn, NewState: Executing}
+										resumed <- true
+										break
+									}
+									if kp == 's' {
+										pgmImage(&p, &world, &c, &currentTurn)
+									}
+									if kp == 'q' {
+										c.events <- FinalTurnComplete{CompletedTurns: currentTurn, Alive: getAliveCells(&world, &p)}
+										pgmImage(&p, &world, &c, &currentTurn)
+										c.events <- StateChange{CompletedTurns: currentTurn, NewState: Quitting}
+										quit <- true
+										close(done)
+										return
+									}
+								}
+							}
+						default:
 						}
 					}
-					c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
-				}
 			}
-		default:
+	}()
+
+	for i := 1; i <= p.Turns; i++ {
+			select {
+			case <-paused:
+				select {
+				case <- resumed:
+					break
+				case <- quit:
+					return
+				}
+			case <- quit:
+					return
+			default:
+			}
 			chunkHeight := p.ImageHeight / p.Threads
 			for j := 0; j < p.Threads; j++ {
 				startRow := j * chunkHeight
@@ -209,6 +253,7 @@ func distributor(p Params, c distributorChannels) {
 
 			wg.Wait()
 			var tempFlipped []util.Cell
+			mu.Lock()
 			for y := 0; y < p.ImageHeight; y++ {
 				for x := 0; x < p.ImageWidth; x++ {
 					if world[y][x] != result[y][x] {
@@ -217,14 +262,14 @@ func distributor(p Params, c distributorChannels) {
 					world[y][x] = result[y][x]
 				}
 			}
+			turn++
+			mu.Unlock()
 			c.events <- CellsFlipped{Cells: tempFlipped, CompletedTurns: i}
 			c.events <- TurnComplete{CompletedTurns: i}
-
-			turn++
-		}
 	}
 	close(jobs)
-	defer ticker.Stop()
+	ticker.Stop()
+	close(done)
 
 	c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&world, &p)}
 
