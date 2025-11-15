@@ -141,11 +141,10 @@ func distributor(p Params, c distributorChannels) {
 	for {
 		select {
 		case <- ticker.C:
-			var tickerReply stubs.WorldInfo
+			var tickerReply AliveCellsCount
 			if !paused {
-				broker.Call("Broker.Consolidate", true, &tickerReply)
-				aliveCells := stubs.GetAliveCells(&tickerReply.World)
-				c.events <- AliveCellsCount{CompletedTurns: tickerReply.CurrentTurns, CellsCount: len(aliveCells)}
+				broker.Call("Broker.TickerReply", true, &tickerReply)
+				c.events <- tickerReply
 			}
 		case kp := <- c.keyPresses:
 			switch kp {
