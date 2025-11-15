@@ -31,25 +31,36 @@ var offsets = [8][2]int{
 
 var mu sync.RWMutex
 
-func incrementGol(world, result *[][]byte, p *Params, startRow, endRow int) {
+func incrementGol(world, result *[][]byte, p *Params, startRow, endRow int, flipped *[]util.Cell, flippedMu *sync.Mutex) {
+	var tempFlipped []util.Cell
 	for y := startRow; y <= endRow; y++ {
 		for x := 0; x < (*p).ImageWidth; x++ {
+			var newState byte
+			oldState := (*world)[y][x]
 			liveNeighbours := countLiveNeighbours(*world, x, y, p)
-			if (*world)[y][x] == 255 { // current cell is alive
+			if oldState == 255 { // current cell is alive
 				if liveNeighbours < 2 || liveNeighbours > 3 {
-					(*result)[y][x] = 0
+					newState = 0
 				} else {
-					(*result)[y][x] = 255
+					newState= 255
 				}
 			} else { // current cell is dead
 				if liveNeighbours == 3 {
-					(*result)[y][x] = 255
+					newState = 255
 				} else {
-					(*result)[y][x] = 0
+					newState = 0
 				}
+			}
+			(*result)[y][x] = newState
+
+			if newState != oldState {
+				tempFlipped = append(tempFlipped, util.Cell{X: x, Y: y})
 			}
 		}
 	}
+	flippedMu.Lock()
+	*flipped = append(*flipped, tempFlipped...)
+	flippedMu.Unlock()
 }
 
 func createWorld(width, height int) [][]byte {
@@ -100,9 +111,9 @@ func getAliveCells(world *[][]byte, p *Params) []util.Cell {
 	return alive
 }
 
-func worker(world, result *[][]byte, p *Params, jobs <-chan Pair, wg *sync.WaitGroup) {
+func worker(world, result *[][]byte, p *Params, jobs <-chan Pair, wg *sync.WaitGroup, flipped *[]util.Cell, flippedMu *sync.Mutex) {
 	for j := range jobs {
-			incrementGol(world, result, p, j.startRow, j.endRow)
+			incrementGol(world, result, p, j.startRow, j.endRow, flipped, flippedMu)
 			wg.Done()
 	}
 }
@@ -149,11 +160,13 @@ func distributor(p Params, c distributorChannels) {
 	c.events <- CellsFlipped{Cells: flipped, CompletedTurns: turn}
 	c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
 
-	jobs := make(chan Pair, p.ImageHeight)
+	jobs := make(chan Pair, p.Threads)
 	var wg sync.WaitGroup
 
+	var tempFlipped []util.Cell
+	var flippedMu sync.Mutex
 	for i := 0; i < p.Threads; i++ {
-		go worker(&world, &result, &p, jobs, &wg)
+		go worker(&world, &result, &p, jobs, &wg, &tempFlipped, &flippedMu)
 	}
 
 	//create a ticker to track time
@@ -185,22 +198,22 @@ func distributor(p Params, c distributorChannels) {
 						case 'q':
 							{
 								mu.RLock()
-								currentTurn := turn + 1
+								currentTurn := turn
 								mu.RUnlock()
 								c.events <- FinalTurnComplete{CompletedTurns: currentTurn, Alive: getAliveCells(&world, &p)}
 								pgmImage(&p, &world, &c, &currentTurn)
 								c.events <- StateChange{CompletedTurns: currentTurn, NewState: Quitting}
 								quit <- true
-								close(done)
         				return
 							}
 						case 'p':
 							{
 								mu.RLock()
-								currentTurn := turn + 1
+								currentTurn := turn
 								mu.RUnlock()
 								c.events <- StateChange{CompletedTurns: currentTurn, NewState: Paused}
 								paused <- true
+								currentTurn++
 								for {
 									kp := <-c.keyPresses
 									if kp == 'p' {
@@ -216,7 +229,6 @@ func distributor(p Params, c distributorChannels) {
 										pgmImage(&p, &world, &c, &currentTurn)
 										c.events <- StateChange{CompletedTurns: currentTurn, NewState: Quitting}
 										quit <- true
-										close(done)
 										return
 									}
 								}
@@ -252,23 +264,22 @@ func distributor(p Params, c distributorChannels) {
 			}
 
 			wg.Wait()
-			var tempFlipped []util.Cell
+
 			mu.Lock()
-			for y := 0; y < p.ImageHeight; y++ {
-				for x := 0; x < p.ImageWidth; x++ {
-					if world[y][x] != result[y][x] {
-						tempFlipped = append(tempFlipped, util.Cell{X: x, Y: y})
-					}
-					world[y][x] = result[y][x]
-				}
-			}
+			world, result = result, world
 			turn++
 			mu.Unlock()
+
+			flippedMu.Lock()
 			c.events <- CellsFlipped{Cells: tempFlipped, CompletedTurns: i}
+			tempFlipped = make([]util.Cell, 0)
+			flippedMu.Unlock()
+			
 			c.events <- TurnComplete{CompletedTurns: i}
 	}
+
 	close(jobs)
-	ticker.Stop()
+	defer ticker.Stop()
 	close(done)
 
 	c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: getAliveCells(&world, &p)}
