@@ -80,7 +80,8 @@ func distributor(p Params, c distributorChannels) {
 	<-c.ioIdle
 
 	// args
-	ipPort := "localhost:8020"
+	ipPort := "localhost:8029"
+	brokerIP := "3.91.63.178:8035"
 
 	// listen on port
 	listener, err := net.Listen("tcp", ipPort)
@@ -99,7 +100,7 @@ func distributor(p Params, c distributorChannels) {
 	channels = c
 
 	// dial the broker
-	broker, err := rpc.Dial("tcp", "localhost:8029")
+	broker, err := rpc.Dial("tcp", brokerIP)
 	if err != nil {
 		panic(err)
 	}
@@ -107,7 +108,8 @@ func distributor(p Params, c distributorChannels) {
 	defer broker.Close()
 	// response is if its been used before - true is yes there is a state, false is no there isnt a state
 	var stateResponse stubs.Response
-	broker.Call("Broker.RegisterDistributor", &stubs.DistributorInfo{Address: ipPort}, &stateResponse)
+	stateResponse.Resp = false // firewall means no fault tolerance for now.
+	// broker.Call("Broker.RegisterDistributor", &stubs.DistributorInfo{Address: *ipPort}, &stateResponse)
 
 	// begin logic
 	if !stateResponse.Resp {
@@ -115,14 +117,11 @@ func distributor(p Params, c distributorChannels) {
 	} else {
 		var initialReply stubs.WorldInfo
 		broker.Call("Broker.Consolidate", true, &initialReply)
-		// turn := initialReply.CurrentTurns
 		c.events <- CellsFlipped{Cells: stubs.GetAliveCells(&initialReply.World), CompletedTurns: initialReply.CurrentTurns}
 		if initialReply.Paused {
 			paused = true
-			// c.events <- StateChange{CompletedTurns: turn, NewState: Paused}
 		} else {
 			paused = false
-			// c.events <- StateChange{CompletedTurns: turn, NewState: Executing}
 		}
 	}
 	c.events <- StateChange{CompletedTurns: 0, NewState: Executing}
