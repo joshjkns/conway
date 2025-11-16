@@ -889,11 +889,11 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width, int
     uint64_t r41 = warpStorage[warpId][(laneId * 8) + 7];
     unsigned long long int t30 = clock64();
     #pragma unroll
-    for (int i = 0; i < 32; i++){
+    for (int i = 0; i < 4; i++){
         //uint64_t t0 = readGlobalTimer();
         // unsigned long long int t0 = clock64();
         unsigned long long int t30 = clock64();
-        Result8 r = oneStepReduceSquareLOP3v2(r00,r01,r10,r11,r20,r21,r30,r31,r40,r41,r50,r51);
+        Result8 r = oneStepReduceSquareSingleWord(r00,r01,r10,r11,r20,r21,r30,r31,r40,r41,r50,r51);
         unsigned long long int t31 = clock64();
         totalTime3+= t31 - t30;
         // unsigned long long int t1 = clock64();
@@ -951,9 +951,9 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width, int
     }
     unsigned long long int t21 = clock64();
     totalTime2 += t21 - t20;
-    // if ((iteration == 0) && (tx == 0) && (ty == 0)){
-    //     printf("Float/Iter/Thread total time: %llu %llu %llu \n", totalTime, totalTime3,totalTime2);
-    // }
+    if ((iteration == 0) && (tx == 0) && (ty == 0)){
+        printf("Float/Iter/Thread total time: %llu %llu %llu \n", totalTime, totalTime3,totalTime2);
+    }
 }
 
 extern "C" void gol(uint64_t *current_ptr, int width, int height, int iterations) {
