@@ -206,19 +206,23 @@ func distributor(p Params, c distributorChannels) {
 						mu.RUnlock()
 						c.events <- AliveCellsCount{CellsCount: len(getAliveCells(&world, &p)), CompletedTurns: currentTurn}
 					case kp := <-c.keyPresses:
+						mu.RLock()
+						currentTurn := turn
+						mu.RUnlock()
 						switch kp {
 						case 's':
 							{
-								mu.RLock()
-								currentTurn := turn
-								mu.RUnlock()
+								// mu.RLock()
+								// currentTurn := turn
+								// mu.RUnlock()
 								pgmImage(&p, &world, &c, &currentTurn)
 							}
 						case 'q':
 							{
-								mu.RLock()
-								currentTurn := turn
-								mu.RUnlock()
+								// mu.RLock()
+								// currentTurn := turn
+								// mu.RUnlock()
+								currentTurn++
 								c.events <- FinalTurnComplete{CompletedTurns: currentTurn, Alive: getAliveCells(&world, &p)}
 								pgmImage(&p, &world, &c, &currentTurn)
 								c.events <- StateChange{CompletedTurns: currentTurn, NewState: Quitting}
@@ -227,9 +231,9 @@ func distributor(p Params, c distributorChannels) {
 							}
 						case 'p':
 							{
-								mu.RLock()
-								currentTurn := turn
-								mu.RUnlock()
+								// mu.RLock()
+								// currentTurn := turn
+								// mu.RUnlock()
 								c.events <- StateChange{CompletedTurns: currentTurn, NewState: Paused}
 								paused <- true
 								currentTurn++
