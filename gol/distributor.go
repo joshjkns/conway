@@ -33,11 +33,11 @@ var mu sync.RWMutex
 
 func incrementGol(world, result *[][]byte, p *Params, startRow, endRow int, flipped *[]util.Cell, flippedMu *sync.Mutex) {
 	var tempFlipped []util.Cell
-	for y := startRow; y <= endRow; y++ {
-		for x := 0; x < (*p).ImageWidth; x++ {
+	for y := startRow + 1; y <= endRow + 1; y++ {
+		for x := 1; x <= (*p).ImageWidth; x++ {
 			var newState byte
 			oldState := (*world)[y][x]
-			liveNeighbours := countLiveNeighbours(*world, x, y, p)
+			liveNeighbours := countLiveNeighbours(*world, x, y)
 			if oldState == 255 { // current cell is alive
 				if liveNeighbours < 2 || liveNeighbours > 3 {
 					newState = 0
@@ -54,7 +54,7 @@ func incrementGol(world, result *[][]byte, p *Params, startRow, endRow int, flip
 			(*result)[y][x] = newState
 
 			if newState != oldState {
-				tempFlipped = append(tempFlipped, util.Cell{X: x, Y: y})
+				tempFlipped = append(tempFlipped, util.Cell{X: x-1, Y: y-1})
 			}
 		}
 	}
@@ -71,23 +71,41 @@ func createWorld(width, height int) [][]byte {
 	return newWorld
 }
 
-func constrainValue(value int, constraint int) int {
-	if value < 0 {
-		value += constraint
-	} else if value >= constraint {
-		value -= constraint
-	}
-	return value
+// func constrainValue(value int, constraint int) int {
+// 	if value < 0 {
+// 		value += constraint
+// 	} else if value >= constraint {
+// 		value -= constraint
+// 	}
+// 	return value
+// }
+
+func addHalo(world [][]byte, width, height int) {
+    // top and bottom
+    copy(world[0], world[height])
+    copy(world[height+1], world[1])
+    
+    // left and right
+    for y := 0; y <= height+1; y++ {
+        world[y][0] = world[y][width]
+        world[y][width+1] = world[y][1]
+    }
+    
+    // corners
+    world[0][0] = world[height][width]
+    world[0][width+1] = world[height][1]
+    world[height+1][0] = world[1][width]
+    world[height+1][width+1] = world[1][1]
 }
 
-func countLiveNeighbours(world [][]byte, x int, y int, p *Params) int {
+func countLiveNeighbours(world [][]byte, x int, y int) int {
 	count := 0
 
 	for _, offset := range offsets {
 		xNeighbour := x + offset[0]
-		yNeighbour := y + offset[1]
-		xNeighbour = constrainValue(xNeighbour, (*p).ImageWidth)
-		yNeighbour = constrainValue(yNeighbour, (*p).ImageHeight)
+    yNeighbour := y + offset[1]
+		// xNeighbour = constrainValue(xNeighbour, (*p).ImageWidth)
+		// yNeighbour = constrainValue(yNeighbour, (*p).ImageHeight)
 
 		if (world)[yNeighbour][xNeighbour] == 255 { // alive
 			count += 1
@@ -100,10 +118,10 @@ func getAliveCells(world *[][]byte, p *Params) []util.Cell {
 	mu.RLock()
 	defer mu.RUnlock()
 	var alive []util.Cell
-	for y := 0; y < (*p).ImageHeight; y++ {
-		for x := 0; x < (*p).ImageWidth; x++ {
+	for y := 1; y <= (*p).ImageHeight; y++ {
+		for x := 1; x <= (*p).ImageWidth; x++ {
 			if (*world)[y][x] == 255 {
-				cell := util.Cell{X: x, Y: y}
+				cell := util.Cell{X: x-1, Y: y-1}
 				alive = append(alive, cell)
 			}
 		}
@@ -124,8 +142,8 @@ func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
 	filename := strconv.Itoa((*p).ImageWidth) + "x" + strconv.Itoa((*p).ImageHeight) + "x" + strconv.Itoa(*turns)
 	(*c).ioFilename <- filename
 
-	for y := 0; y < (*p).ImageHeight; y++ {
-		for x := 0; x < (*p).ImageWidth; x++ {
+	for y := 1; y <= (*p).ImageHeight; y++ {
+		for x := 1; x <= (*p).ImageWidth; x++ {
 			(*c).ioOutput <- (*world)[y][x]
 		}
 	}
@@ -140,15 +158,16 @@ func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
 func distributor(p Params, c distributorChannels) {
 	c.ioCommand <- ioInput // give us the world in bytes
 	c.ioFilename <- strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight)
-	world := createWorld(p.ImageWidth, p.ImageHeight)
-	result := createWorld(p.ImageWidth, p.ImageHeight)
+	// +2 for the halos l+r, t+b
+	world := createWorld(p.ImageWidth + 2, p.ImageHeight + 2)
+	result := createWorld(p.ImageWidth + 2, p.ImageHeight + 2) 
 	var flipped []util.Cell
 
-	for y := 0; y < p.ImageHeight; y++ {
-		for x := 0; x < p.ImageWidth; x++ {
+	for y := 1; y <= p.ImageHeight; y++ {
+		for x := 1; x <= p.ImageWidth; x++ {
 			world[y][x] = <-c.ioInput
 			if world[y][x] == 255 {
-				flipped = append(flipped, util.Cell{X: x, Y: y})
+				flipped = append(flipped, util.Cell{X: x-1, Y: y-1})
 			}
 		}
 	}
@@ -252,6 +271,8 @@ func distributor(p Params, c distributorChannels) {
 					return
 			default:
 			}
+			addHalo(world, p.ImageWidth, p.ImageHeight)
+
 			chunkHeight := p.ImageHeight / p.Threads
 			for j := 0; j < p.Threads; j++ {
 				startRow := j * chunkHeight
