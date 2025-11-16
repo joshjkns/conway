@@ -1,7 +1,6 @@
 package main
 
 import (
-	"csa/conway/util"
 	"csa/stubs"
 	"flag"
 	"fmt"
@@ -151,7 +150,7 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 		}
 
 		// put all chunks back together
-		var flipped []util.Cell
+		// var flipped []util.Cell
 
 		for data := range b.workers {
 			reply := replyArray[data.ID]
@@ -162,20 +161,20 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 			for i := startRow; i <= endRow; i++ {
 				for j := 0; j < args.Width; j++ {
 					world[i][j] = chunkWorld[i-startRow][j]
-					if world[i][j] != b.currentWorld[i][j] {
-						flipped = append(flipped, util.Cell{X:j, Y:i})
-					}
+					// if world[i][j] != b.currentWorld[i][j] {
+					// 	flipped = append(flipped, util.Cell{X:j, Y:i})
+					// }
 					b.currentWorld[i][j] = world[i][j]
 				}
 			}
 		}
-		var cellsFlippedData stubs.CellsFlippedData
-		cellsFlippedData.CellsFlipped = flipped
-		cellsFlippedData.CompletedTurns = b.currentTurns
-		var flipResponse stubs.Response
-		if !b.disconnect {
-				b.distributor.Call("Distributor.Flip", cellsFlippedData, &flipResponse)
-		}
+		// var cellsFlippedData stubs.CellsFlippedData
+		// cellsFlippedData.CellsFlipped = flipped
+		// cellsFlippedData.CompletedTurns = b.currentTurns
+		// var flipResponse stubs.Response
+		// if !b.disconnect {
+		// 		b.distributor.Call("Distributor.Flip", cellsFlippedData, &flipResponse)
+		// }
 		b.currentTurns += 1
 	}
 	
@@ -193,11 +192,6 @@ func main() {
 	b.pausedCond = sync.NewCond(&b.pausedMu)
 
 	// due to firewall issue
-	var err error
-	b.workers[stubs.Data{ID: 0, Address: "3.236.170.65:8030"}], err = rpc.Dial("tcp", "3.236.170.65:8030")
-	if err != nil {
-		print(err)
-	}
 	// b.workers[stubs.Data{ID: 1, Address: "34.237.53.207:8031"}], err = rpc.Dial("tcp", "34.237.53.207:8031")
 	// if err != nil {
 	// 	panic(err)
@@ -207,7 +201,9 @@ func main() {
 	rpc.Register(b)
 
 	// args
-	port := flag.String("port", ":8029", "Port to listen on")
+	port := flag.String("port", "localhost:8035", "(PRIVATE) Port to listen on")
+	// distributorIP := flag.String("distributor", "localhost:8029", "Distributor's IP")
+
 	flag.Parse()
 
 	// listen
