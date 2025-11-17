@@ -65,7 +65,7 @@ func distributor(p Params, c distributorChannels) {
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
 
-	brokerIP := "localhost:8035"
+	brokerIP := "44.222.63.146:8035"
 	flag.Parse()
 
 	// dial the broker
