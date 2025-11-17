@@ -33,7 +33,7 @@ var mu sync.RWMutex
 
 func incrementGol(world, result *[][]byte, p *Params, startRow, endRow int, flipped *[]util.Cell, flippedMu *sync.Mutex) {
 	var tempFlipped []util.Cell
-	for y := startRow + 1; y <= endRow + 1; y++ {
+	for y := startRow + 1; y <= endRow+1; y++ {
 		for x := 1; x <= (*p).ImageWidth; x++ {
 			var newState byte
 			oldState := (*world)[y][x]
@@ -42,7 +42,7 @@ func incrementGol(world, result *[][]byte, p *Params, startRow, endRow int, flip
 				if liveNeighbours < 2 || liveNeighbours > 3 {
 					newState = 0
 				} else {
-					newState= 255
+					newState = 255
 				}
 			} else { // current cell is dead
 				if liveNeighbours == 3 {
@@ -54,7 +54,7 @@ func incrementGol(world, result *[][]byte, p *Params, startRow, endRow int, flip
 			(*result)[y][x] = newState
 
 			if newState != oldState {
-				tempFlipped = append(tempFlipped, util.Cell{X: x-1, Y: y-1})
+				tempFlipped = append(tempFlipped, util.Cell{X: x - 1, Y: y - 1})
 			}
 		}
 	}
@@ -81,21 +81,21 @@ func createWorld(width, height int) [][]byte {
 // }
 
 func addHalo(world [][]byte, width, height int) {
-    // top and bottom
-    copy(world[0], world[height])
-    copy(world[height+1], world[1])
-    
-    // left and right
-    for y := 0; y <= height+1; y++ {
-        world[y][0] = world[y][width]
-        world[y][width+1] = world[y][1]
-    }
-    
-    // corners
-    world[0][0] = world[height][width]
-    world[0][width+1] = world[height][1]
-    world[height+1][0] = world[1][width]
-    world[height+1][width+1] = world[1][1]
+	// top and bottom
+	copy(world[0], world[height])
+	copy(world[height+1], world[1])
+
+	// left and right
+	for y := 0; y <= height+1; y++ {
+		world[y][0] = world[y][width]
+		world[y][width+1] = world[y][1]
+	}
+
+	// corners
+	world[0][0] = world[height][width]
+	world[0][width+1] = world[height][1]
+	world[height+1][0] = world[1][width]
+	world[height+1][width+1] = world[1][1]
 }
 
 func countLiveNeighbours(world [][]byte, x int, y int) int {
@@ -103,7 +103,7 @@ func countLiveNeighbours(world [][]byte, x int, y int) int {
 
 	for _, offset := range offsets {
 		xNeighbour := x + offset[0]
-    yNeighbour := y + offset[1]
+		yNeighbour := y + offset[1]
 		// xNeighbour = constrainValue(xNeighbour, (*p).ImageWidth)
 		// yNeighbour = constrainValue(yNeighbour, (*p).ImageHeight)
 
@@ -121,7 +121,7 @@ func getAliveCells(world *[][]byte, p *Params) []util.Cell {
 	for y := 1; y <= (*p).ImageHeight; y++ {
 		for x := 1; x <= (*p).ImageWidth; x++ {
 			if (*world)[y][x] == 255 {
-				cell := util.Cell{X: x-1, Y: y-1}
+				cell := util.Cell{X: x - 1, Y: y - 1}
 				alive = append(alive, cell)
 			}
 		}
@@ -131,8 +131,8 @@ func getAliveCells(world *[][]byte, p *Params) []util.Cell {
 
 func worker(world, result *[][]byte, p *Params, jobs <-chan Pair, wg *sync.WaitGroup, flipped *[]util.Cell, flippedMu *sync.Mutex) {
 	for j := range jobs {
-			incrementGol(world, result, p, j.startRow, j.endRow, flipped, flippedMu)
-			wg.Done()
+		incrementGol(world, result, p, j.startRow, j.endRow, flipped, flippedMu)
+		wg.Done()
 	}
 }
 func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
@@ -154,20 +154,29 @@ func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
 
 }
 
+func handleQuit(world *[][]byte, p *Params, c *distributorChannels, turn int) {
+	mu.RLock()
+	currentTurn := turn
+	mu.RUnlock()
+	c.events <- FinalTurnComplete{CompletedTurns: currentTurn, Alive: getAliveCells(world, p)}
+	pgmImage(p, world, c, &currentTurn)
+	c.events <- StateChange{CompletedTurns: currentTurn, NewState: Quitting}
+}
+
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
 	c.ioCommand <- ioInput // give us the world in bytes
 	c.ioFilename <- strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight)
 	// +2 for the halos l+r, t+b
-	world := createWorld(p.ImageWidth + 2, p.ImageHeight + 2)
-	result := createWorld(p.ImageWidth + 2, p.ImageHeight + 2) 
+	world := createWorld(p.ImageWidth+2, p.ImageHeight+2)
+	result := createWorld(p.ImageWidth+2, p.ImageHeight+2)
 	var flipped []util.Cell
 
 	for y := 1; y <= p.ImageHeight; y++ {
 		for x := 1; x <= p.ImageWidth; x++ {
 			world[y][x] = <-c.ioInput
 			if world[y][x] == 255 {
-				flipped = append(flipped, util.Cell{X: x-1, Y: y-1})
+				flipped = append(flipped, util.Cell{X: x - 1, Y: y - 1})
 			}
 		}
 	}
@@ -198,109 +207,98 @@ func distributor(p Params, c distributorChannels) {
 	go func() {
 		for {
 			select {
-					case <- done:
+			case <-done:
+				return
+			case <-ticker.C:
+				mu.RLock()
+				tickerTurn := turn
+				mu.RUnlock()
+				c.events <- AliveCellsCount{CellsCount: len(getAliveCells(&world, &p)), CompletedTurns: tickerTurn}
+			case kp := <-c.keyPresses:
+				switch kp {
+				case 's':
+					{
+						mu.RLock()
+						currentTurn := turn
+						mu.RUnlock()
+						pgmImage(&p, &world, &c, &currentTurn)
+					}
+				case 'q':
+					{
+						quit <- true // quit the main thread - quit logic is there.
 						return
-					case <-ticker.C:
+					}
+				case 'p':
+					{
+						paused <- true // ensure that the game is paused before doing things.
 						mu.RLock()
 						currentTurn := turn
 						mu.RUnlock()
-						c.events <- AliveCellsCount{CellsCount: len(getAliveCells(&world, &p)), CompletedTurns: currentTurn}
-					case kp := <-c.keyPresses:
-						mu.RLock()
-						currentTurn := turn
-						mu.RUnlock()
-						switch kp {
-						case 's':
-							{
-								// mu.RLock()
-								// currentTurn := turn
-								// mu.RUnlock()
+						c.events <- StateChange{CompletedTurns: currentTurn, NewState: Paused}
+						for {
+							kp := <-c.keyPresses
+							if kp == 'p' {
+								c.events <- StateChange{CompletedTurns: currentTurn, NewState: Executing}
+								resumed <- true
+								break
+							}
+							if kp == 's' {
 								pgmImage(&p, &world, &c, &currentTurn)
 							}
-						case 'q':
-							{
-								// mu.RLock()
-								// currentTurn := turn
-								// mu.RUnlock()
-								currentTurn++
-								c.events <- FinalTurnComplete{CompletedTurns: currentTurn, Alive: getAliveCells(&world, &p)}
-								pgmImage(&p, &world, &c, &currentTurn)
-								c.events <- StateChange{CompletedTurns: currentTurn, NewState: Quitting}
+							if kp == 'q' {
 								quit <- true
-        				return
+								return
 							}
-						case 'p':
-							{
-								// mu.RLock()
-								// currentTurn := turn
-								// mu.RUnlock()
-								c.events <- StateChange{CompletedTurns: currentTurn, NewState: Paused}
-								paused <- true
-								currentTurn++
-								for {
-									kp := <-c.keyPresses
-									if kp == 'p' {
-										c.events <- StateChange{CompletedTurns: currentTurn, NewState: Executing}
-										resumed <- true
-										break
-									}
-									if kp == 's' {
-										pgmImage(&p, &world, &c, &currentTurn)
-									}
-									if kp == 'q' {
-										c.events <- FinalTurnComplete{CompletedTurns: currentTurn, Alive: getAliveCells(&world, &p)}
-										pgmImage(&p, &world, &c, &currentTurn)
-										c.events <- StateChange{CompletedTurns: currentTurn, NewState: Quitting}
-										quit <- true
-										return
-									}
-								}
-							}
-						default:
 						}
 					}
+				default:
+				}
 			}
+		}
 	}()
 
 	for i := 1; i <= p.Turns; i++ {
+		select {
+		case <-paused:
 			select {
-			case <-paused:
-				select {
-				case <- resumed:
-					break
-				case <- quit:
-					return
-				}
-			case <- quit:
-					return
-			default:
+			case <-resumed:
+				break
+			case <-quit:
+				handleQuit(&world, &p, &c, turn)
+				return
 			}
-			addHalo(world, p.ImageWidth, p.ImageHeight)
+		case <-quit:
+			handleQuit(&world, &p, &c, turn)
+			return
+		default:
+		}
 
-			chunkHeight := p.ImageHeight / p.Threads
-			for j := 0; j < p.Threads; j++ {
-				startRow := j * chunkHeight
-				endRow := startRow + chunkHeight - 1
-				if j == p.Threads-1 {
-					endRow = p.ImageHeight - 1
-				}
-				wg.Add(1)
-				jobs <- Pair{startRow, endRow}
+		addHalo(world, p.ImageWidth, p.ImageHeight)
+
+		chunkHeight := p.ImageHeight / p.Threads
+		for j := 0; j < p.Threads; j++ {
+			startRow := j * chunkHeight
+			endRow := startRow + chunkHeight - 1
+			if j == p.Threads-1 {
+				endRow = p.ImageHeight - 1
 			}
+			wg.Add(1)
+			jobs <- Pair{startRow, endRow}
+		}
 
-			wg.Wait()
+		wg.Wait()
 
-			mu.Lock()
-			world, result = result, world
-			turn++
-			mu.Unlock()
+		mu.Lock()
+		world, result = result, world
+		turn++
+		mu.Unlock()
 
-			flippedMu.Lock()
-			c.events <- CellsFlipped{Cells: tempFlipped, CompletedTurns: i}
-			tempFlipped = make([]util.Cell, 0)
-			flippedMu.Unlock()
-			
-			c.events <- TurnComplete{CompletedTurns: i}
+		flippedMu.Lock()
+		c.events <- CellsFlipped{Cells: tempFlipped, CompletedTurns: i}
+		tempFlipped = make([]util.Cell, 0)
+		flippedMu.Unlock()
+
+		c.events <- TurnComplete{CompletedTurns: i}
 	}
 
 	close(jobs)
