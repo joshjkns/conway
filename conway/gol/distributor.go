@@ -80,6 +80,7 @@ func distributor(p Params, c distributorChannels) {
 
 	// args
 	ipPort := "localhost:8020"
+	brokerIP := "44.222.63.146:8035"
 
 	// listen on port
 	listener, err := net.Listen("tcp", ipPort)
@@ -98,7 +99,7 @@ func distributor(p Params, c distributorChannels) {
 	channels = c
 
 	// dial the broker
-	broker, err := rpc.Dial("tcp", "localhost:8035")
+	broker, err := rpc.Dial("tcp", brokerIP)
 	if err != nil {
 		panic(err)
 	}

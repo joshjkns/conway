@@ -199,7 +199,7 @@ func main() {
 	rpc.Register(b)
 
 	// args
-	port := flag.String("port", ":8035", "Port to listen on")
+	port := flag.String("port", "localhost:8035", "Port to listen on")
 	flag.Parse()
 
 	// listen

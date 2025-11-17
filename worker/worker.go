@@ -91,6 +91,7 @@ func main() {
 
 	// args
 	ip := flag.String("ip", "localhost:8030", "IP to listen on.")
+	brokerIP := flag.String("broker", "localhost:8035","Broker's IP")
 	flag.Parse()
 
 	// listen
@@ -102,9 +103,9 @@ func main() {
 	fmt.Println("[Worker] - Listening on port ", *ip)
 
 	// dial the broker
-	broker, err := rpc.Dial("tcp", "localhost:8035")
-	if err != nil {
-		panic(err)
+	broker, err2 := rpc.Dial("tcp", *brokerIP)
+	if err2 != nil {
+		panic(err2)
 	}
 	w.broker = broker
 	fmt.Println("[Worker] - Dialed broker successfully.")
