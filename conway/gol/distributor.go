@@ -81,7 +81,7 @@ func distributor(p Params, c distributorChannels) {
 
 	// args
 	ipPort := "localhost:8029"
-	brokerIP := "44.222.63.146:8035"
+	brokerIP := "3.93.75.158:8035"
 	// brokerIP := "localhost:8035"
 
 	// listen on port
@@ -105,12 +105,13 @@ func distributor(p Params, c distributorChannels) {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("[Distributor] - Dialed broker on port ", brokerIP)
 
 	defer broker.Close()
 	// response is if its been used before - true is yes there is a state, false is no there isnt a state
 	var stateResponse stubs.Response
-	stateResponse.Resp = false // firewall means no fault tolerance for now.
-	// broker.Call("Broker.RegisterDistributor", &stubs.DistributorInfo{Address: *ipPort}, &stateResponse)
+	// stateResponse.Resp = false // firewall means no fault tolerance for now.
+	broker.Call("Broker.RegisterDistributor", &stubs.DistributorInfo{Address: brokerIP}, &stateResponse)
 
 	// begin logic
 	if !stateResponse.Resp {
