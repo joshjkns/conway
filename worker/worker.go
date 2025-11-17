@@ -97,6 +97,7 @@ func (w *Worker) GameOfLife(args stubs.ChunkInfo, reply *stubs.ChunkInfo) (err e
 		jobs <- stubs.Pair{StartRow: startRow, EndRow: endRow}
 	}
 
+	close(jobs)
 	wg.Wait()
 	
 	reply.Chunk = res
