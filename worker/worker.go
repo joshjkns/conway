@@ -127,8 +127,8 @@ func (w *Worker) SendHalo(pos stubs.Position, reply *stubs.Halo) error {
 
 func (w *Worker) GameOfLife(args stubs.ChunkInfo, reply *stubs.ChunkInfo) (err error) {
 	w.chunk = stubs.CopyWorld(&args.Chunk, len(args.Chunk[0]), len(args.Chunk))
-	w.width = len(w.chunk[0])
-	w.height = len((w.chunk))
+	w.width = len(args.Chunk[0])
+	w.height = len((args.Chunk))
 	w.startRow = args.StartRow
 	w.endRow = args.EndRow
 	w.neighbours = args.Neighbours
@@ -142,7 +142,6 @@ func (w *Worker) GameOfLife(args stubs.ChunkInfo, reply *stubs.ChunkInfo) (err e
 	// add halos from neighbours
 	for i := 1; i <= args.Turns; i++ {
     // create a copy of the base chunk each turn
-
     // get top and bottom halos each turn
     withTop := addHalo(current, w.width, len(current), stubs.Top, w.neighbours.LeftNeighbour.Address, w.id)
     withBoth := addHalo(withTop, w.width, len(withTop), stubs.Bottom, w.neighbours.RightNeighbour.Address, w.id)
@@ -153,8 +152,7 @@ func (w *Worker) GameOfLife(args stubs.ChunkInfo, reply *stubs.ChunkInfo) (err e
 
 		var resp stubs.Response
     w.broker.Call("Broker.WaitForEveryone", stubs.WaitArgs{Turn: i, Chunk: stubs.ChunkInfo{Chunk: current}, Width: w.width, ID: w.id}, &resp)
-		fmt.Println("DONE WAITING")
-
+		
 		w.mu.Lock()
 		w.chunk = stubs.CopyWorld(&current, w.width, len(current))
 		w.mu.Unlock()
@@ -173,7 +171,8 @@ func main() {
 	rpc.Register(w)
 
 	// args
-	port := flag.String("port", ":8030", "Port to listen on.")
+	port := flag.String("port", "localhost:8030", "Private IP to listen on.")
+	brokerIP := flag.String("broker", "localhost:8035", "Broker's Private IP")
 	flag.Parse()
 
 	// listen
@@ -185,7 +184,7 @@ func main() {
 	fmt.Println("[Worker] - Listening on port ", *port)
 
 	// dial the broker
-	broker, err := rpc.Dial("tcp", "localhost:8029")
+	broker, err := rpc.Dial("tcp", *brokerIP)
 	if err != nil {
 		panic(err)
 	}

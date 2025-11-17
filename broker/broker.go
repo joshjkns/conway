@@ -23,7 +23,7 @@ type Broker struct{
 }
 
 func (b *Broker) Register(args stubs.WorkerInfo, reply *stubs.Confirmation) (err error) {
-	address := "localhost" + args.Port
+	address := args.Port
 	worker, err := rpc.Dial("tcp", address)
 	if err != nil {
 		return err
@@ -84,7 +84,7 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 		if i == workers - 1 {
 			endY = args.Height - 1
 		}
-		fmt.Println("STARTY ", startY, " ENDY ", endY, "HEIGHT ", (endY - startY + 1), " ROWS PER WORKER ", rowsPerWorker, " ARGS HEIGHT ", args.Height)
+		// fmt.Println("STARTY ", startY, " ENDY ", endY, "HEIGHT ", (endY - startY + 1), " ROWS PER WORKER ", rowsPerWorker, " ARGS HEIGHT ", args.Height)
 
 		// make neighbours array and add left and right neighbours
 		leftNeighbour := stubs.ConstrainValue(data.ID - 1, workers)
@@ -140,7 +140,7 @@ func (b *Broker) WaitForEveryone(args stubs.WaitArgs, reply *stubs.Response) (er
 		}
 	}
 	b.ready += 1
-	fmt.Println("[Broker] Worker ", args.ID, "is ready! Total: ", b.ready)
+	// fmt.Println("[Broker] Worker ", args.ID, "is ready! Total: ", b.ready)
 
 	if b.ready == len(b.workers) {
 		b.ready = 0
@@ -166,7 +166,7 @@ func main() {
 	rpc.Register(b)
 
 	// args
-	port := flag.String("port", ":8029", "Port to listen on")
+	port := flag.String("port", "localhost:8035", "Private IP to listen on")
 	flag.Parse()
 
 	// listen

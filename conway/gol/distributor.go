@@ -3,6 +3,7 @@ package gol
 import (
 	"csa/conway/util"
 	"csa/stubs"
+	"flag"
 	"net/rpc"
 	"strconv"
 	"time"
@@ -64,25 +65,11 @@ func distributor(p Params, c distributorChannels) {
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
 
-	// // args
-	// port := flag.String("port", ":8020", "Port to listen on.")
-	// flag.Parse()
-
-	// // listen on port
-	// listener, err := net.Listen("tcp", *port)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Println("[Distributor] - Listening on port ", *port)
-	// defer listener.Close()
-	// go rpc.Accept(listener)
-
-	// // making new Distributor
-	// d := &Distributor{}
-	// rpc.Register(d)
+	brokerIP := "localhost:8035"
+	flag.Parse()
 
 	// dial the broker
-	broker, err := rpc.Dial("tcp", "localhost:8029")
+	broker, err := rpc.Dial("tcp", brokerIP)
 	if err != nil {
 		panic(err)
 	}
