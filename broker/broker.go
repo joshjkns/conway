@@ -1,7 +1,6 @@
 package main
 
 import (
-	"csa/conway/util"
 	"csa/stubs"
 	"flag"
 	"fmt"
@@ -155,7 +154,7 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 		}
 
 		// put all chunks back together
-		var flipped []util.Cell
+		// var flipped []util.Cell
 
 		for data := range b.workers {
 			reply := replyArray[data.ID]
@@ -166,20 +165,20 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 			for i := startRow; i <= endRow; i++ {
 				for j := 0; j < args.Width; j++ {
 					world[i][j] = chunkWorld[i-startRow][j]
-					if world[i][j] != b.currentWorld[i][j] {
-						flipped = append(flipped, util.Cell{X:j, Y:i})
-					}
+					// if world[i][j] != b.currentWorld[i][j] {
+					// 	flipped = append(flipped, util.Cell{X:j, Y:i})
+					// }
 					b.currentWorld[i][j] = world[i][j]
 				}
 			}
 		}
-		var cellsFlippedData stubs.CellsFlippedData
-		cellsFlippedData.CellsFlipped = flipped
-		cellsFlippedData.CompletedTurns = b.currentTurns
-		var flipResponse stubs.Response
-		if !b.disconnect {
-				b.distributor.Call("Distributor.Flip", cellsFlippedData, &flipResponse)
-		}
+		// var cellsFlippedData stubs.CellsFlippedData
+		// cellsFlippedData.CellsFlipped = flipped
+		// cellsFlippedData.CompletedTurns = b.currentTurns
+		// var flipResponse stubs.Response
+		// if !b.disconnect {
+		// 		b.distributor.Call("Distributor.Flip", cellsFlippedData, &flipResponse)
+		// }
 		b.mu.Lock()
 		b.currentTurns += 1
 		b.mu.Unlock()
