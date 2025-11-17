@@ -78,7 +78,6 @@ func (w *Worker) GameOfLife(args stubs.ChunkInfo, reply *stubs.ChunkInfo) (err e
 	w.chunk = stubs.CopyWorld(&args.Chunk, w.width, w.height)
 	w.mu.Unlock()
 
-	
 	reply.Chunk = newChunk
 	reply.StartRow = w.startRow
 	reply.EndRow = w.endRow
@@ -103,7 +102,7 @@ func main() {
 	fmt.Println("[Worker] - Listening on port ", *ip)
 
 	// dial the broker
-	broker, err := rpc.Dial("tcp", "localhost:8029")
+	broker, err := rpc.Dial("tcp", "localhost:8035")
 	if err != nil {
 		panic(err)
 	}

@@ -66,9 +66,11 @@ func (b *Broker) TogglePause(args bool, reply *stubs.Response) (err error) {
 }
 
 func (b *Broker) Consolidate(args bool, reply *stubs.WorldInfo) (err error) {
+	b.mu.Lock()
 	reply.CurrentTurns = b.currentTurns - 1
 	reply.World = b.currentWorld
 	reply.Paused = b.paused
+	b.mu.Unlock()
 	return nil
 }
 
@@ -178,7 +180,9 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 		if !b.disconnect {
 				b.distributor.Call("Distributor.Flip", cellsFlippedData, &flipResponse)
 		}
+		b.mu.Lock()
 		b.currentTurns += 1
+		b.mu.Unlock()
 	}
 	
 	reply.World = world
@@ -196,7 +200,7 @@ func main() {
 	rpc.Register(b)
 
 	// args
-	port := flag.String("port", ":8029", "Port to listen on")
+	port := flag.String("port", ":8035", "Port to listen on")
 	flag.Parse()
 
 	// listen
