@@ -16,7 +16,7 @@
 #define STEP_SIZE 16
 
 // Calculated constants
-#define SIMULATED_ROWS (WORK_GROUP_SIZE * WORK_PER_THREAD - 2 * STEP_SIZE)  // 480
+#define SIMULATED_ROWS (WORK_GROUP_SIZE * WORK_PER_THREAD - 2 * STEP_SIZE)  // 480, 480 + 32 = 512 is teh rows a block can actually do, so -16 in top and bottom for padding
 #define HORIZONTAL_GROUPS ((WIDTH + 31) / 32)  // 512
 #define VERTICAL_GROUPS ((HEIGHT + SIMULATED_ROWS - 1) / SIMULATED_ROWS)  // 35
 #define PADDED_COLUMNS (HORIZONTAL_GROUPS + 2)  // 514
@@ -28,29 +28,6 @@
 #define CLIP_BOTTOM_LY (WORK_GROUP_SIZE - 1 - CLIP_TOP_LY)
 #define CLIP_BOTTOM_OFFSET (WORK_PER_THREAD + 1 - CLIP_TOP_OFFSET)
 
-
-// struct ResultOneStepReduce {
-//     uint32_t store[WORK_PER_THREAD];
-// };
-
-// struct inputOneStepReduce {
-//     uint32_t store[2][WORK_PER_THREAD+2];
-// };
-
-// __device__ inline uint32_t sub_step(
-//     uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4,
-//     uint32_t a5, uint32_t a6, uint32_t a7, uint32_t top_xor,
-//     uint32_t bottom_xor, uint32_t top_maj, uint32_t bottom_maj, uint32_t center)
-// {
-//     uint32_t aA, b2, magic0, magic1, magic2;
-//     asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(aA) : "r"(top_xor), "r"(a4), "r"(a3));
-//     asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(b2) : "r"(top_xor), "r"(a4), "r"(a3));
-//     asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(bottom_xor), "r"(aA), "r"(center));
-//     asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(center), "r"(b2));
-//     asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(bottom_maj), "r"(top_maj));
-//     asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(center) : "r"(magic2), "r"(magic0), "r"(magic1));
-//     return center;
-// }
 
 __device__ inline void load_uint4(uint32_t *x, uint32_t *y, uint32_t *z, uint32_t *w, const uint32_t *addr) {
     asm("ld.global.v4.u32 {%0, %1, %2, %3}, [%4];" : "=r"(*x), "=r"(*y), "=r"(*z), "=r"(*w) : "l"(addr));
@@ -133,8 +110,8 @@ __device__ inline void permute(uint32_t *dest, uint32_t left, uint32_t right) {
 
 
 
-__global__ void step_kernel(const uint32_t *field, uint32_t *new_field, uint32_t steps) {
-    const size_t py = threadIdx.y * WORK_PER_THREAD;
+__global__ void step_kernel(const uint32_t *field, uint32_t *new_field, uint32_t steps, int warpComputeSize) {
+    const size_t py = threadIdx.y * 16;
     const size_t i = (blockIdx.x + 1) * PADDED_HEIGHT + blockIdx.y * SIMULATED_ROWS + py;
 
     uint32_t left[18];
@@ -158,8 +135,22 @@ __global__ void step_kernel(const uint32_t *field, uint32_t *new_field, uint32_t
         permute(&right[row * 4 + 4], mw, rw);
     }
 
+    // Maybe put it here if really necsary?
+    // //-------------------- I think I can remove this---------------------------------
+    // if (blockIdx.x == 0) {
+    //     #pragma unroll
+    //     for (int row = 0; row < WORK_PER_THREAD; row++)
+    //         left[row + 1] &= 0x0000FFFF;
+    // }
+    // if (blockIdx.x == gridDim.x - 1) {
+    //     #pragma unroll
+    //     for (int row = 0; row < WORK_PER_THREAD; row++)
+    //         right[row + 1] &= 0xFFFF0000;
+    // }
+    // //-------------------------------------------------------------------------------
+
     // Simulation loop
-    for (uint32_t step = 0; step < steps; step++) {
+    for (uint32_t step = 0; step < warpComputeSize; step++) {
         uint32_t result_left[16];
         uint32_t result_right[16];
 
@@ -172,16 +163,19 @@ __global__ void step_kernel(const uint32_t *field, uint32_t *new_field, uint32_t
             left[CLIP_BOTTOM_OFFSET] = 0;
             right[CLIP_BOTTOM_OFFSET] = 0;
         }
+
+        //-------------------- I think I can remove this --------------------------------
         if (blockIdx.x == 0) {
             #pragma unroll
-            for (int row = 0; row < WORK_PER_THREAD; row++)
+            for (int row = 0; row < 16; row++)
                 left[row + 1] &= 0x0000FFFF;
         }
         if (blockIdx.x == gridDim.x - 1) {
             #pragma unroll
-            for (int row = 0; row < WORK_PER_THREAD; row++)
+            for (int row = 0; row < 16; row++)
                 right[row + 1] &= 0xFFFF0000;
         }
+        //-------------------------------------------------------------------------------
 
         // Warp shuffles
         left[0] = __shfl_up_sync(0xFFFFFFFF, left[16], 1);
@@ -189,85 +183,98 @@ __global__ void step_kernel(const uint32_t *field, uint32_t *new_field, uint32_t
         left[17] = __shfl_down_sync(0xFFFFFFFF, left[1], 1);
         right[17] = __shfl_down_sync(0xFFFFFFFF, right[1], 1);
 
-        uint32_t left_top_xor, left_mid_xor, left_top_maj, left_mid_maj;
-        uint32_t right_top_xor, right_mid_xor, right_top_maj, right_mid_maj;
+        uint32_t xor00, xor01, sum00, sum01;
+        uint32_t xor10, xor11, sum10, sum11;
+        // Setting up xor and sum chains, for the column 0
+        {
+            const uint32_t BeginA0 = left[0] >> 1;
+            const uint32_t BeginA1 = left[0];
+            const uint32_t BeginA2 = __funnelshift_l(right[0], left[0], 1);
+            const uint32_t BeginA3 = left[1] >> 1;
+            const uint32_t BeginA4 = __funnelshift_l(right[1], left[1], 1);
 
-        // Process rows
-        #pragma unroll
-        for (int row = 1; row <= 16; row++) {
-
-            // Left half
-            const uint32_t a0 = left[row - 1] >> 1;
-            const uint32_t a1 = left[row - 1];
-            const uint32_t a2 = __funnelshift_l(right[row - 1], left[row - 1], 1);
-            const uint32_t a3 = left[row] >> 1;
-            const uint32_t a4 = __funnelshift_l(right[row], left[row], 1);
-            const uint32_t a5 = left[row + 1] >> 1;
-            const uint32_t a6 = left[row + 1];
-            const uint32_t a7 = __funnelshift_l(right[row + 1], left[row + 1], 1);
-
-            if (row == 1) {
-                asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(left_top_xor) : "r"(a2), "r"(a1), "r"(a0));
-                asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(left_mid_xor) : "r"(a4), "r"(a3), "r"(left[row]));
-                asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(left_top_maj) : "r"(a2), "r"(a1), "r"(a0));
-                asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(left_mid_maj) : "r"(a4), "r"(a3), "r"(left[row]));
-            }
-
-            uint32_t left_bottom_xor, left_bottom_maj;
-            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(left_bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
-            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(left_bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
-
-            uint32_t aA, y2, magic0, magic1, magic2;
-            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(aA) : "r"(left_top_xor), "r"(a4), "r"(a3));
-            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(y2) : "r"(left_top_xor), "r"(a4), "r"(a3));
-            asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(left_bottom_xor), "r"(aA), "r"(left[row]));
-            asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(left[row]), "r"(y2));
-            asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(left_bottom_maj), "r"(left_top_maj));
-            asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result_left[row-1]) : "r"(magic2), "r"(magic0), "r"(magic1));
-
-            left_top_xor = left_mid_xor;
-            left_mid_xor = left_bottom_xor;
-            left_top_maj = left_mid_maj;
-            left_mid_maj = left_bottom_maj;
-
-            // Right half
-            const uint32_t b0 = __funnelshift_r(right[row - 1], left[row - 1], 1);
-            const uint32_t b1 = right[row - 1];
-            const uint32_t b2 = right[row - 1] << 1;
-            const uint32_t b3 = __funnelshift_r(right[row], left[row], 1);
-            const uint32_t b4 = right[row] << 1;
-            const uint32_t b5 = __funnelshift_r(right[row + 1], left[row + 1], 1);
-            const uint32_t b6 = right[row + 1];
-            const uint32_t b7 = right[row + 1] << 1;
-
-            if (row == 1) {
-                asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(right_top_xor) : "r"(b2), "r"(b1), "r"(b0));
-                asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(right_mid_xor) : "r"(b4), "r"(b3), "r"(right[row]));
-                asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(right_top_maj) : "r"(b2), "r"(b1), "r"(b0));
-                asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(right_mid_maj) : "r"(b4), "r"(b3), "r"(right[row]));
-            }
-
-            uint32_t right_bottom_xor, right_bottom_maj;
-            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(right_bottom_xor) : "r"(b7), "r"(b6), "r"(b5));
-            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(right_bottom_maj) : "r"(b7), "r"(b6), "r"(b5));
-
-            uint32_t bB, x2;
-            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bB) : "r"(right_top_xor), "r"(b4), "r"(b3));
-            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(x2) : "r"(right_top_xor), "r"(b4), "r"(b3));
-            asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(right_bottom_xor), "r"(bB), "r"(right[row]));
-            asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(right[row]), "r"(x2));
-            asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(right_bottom_maj), "r"(right_top_maj));
-            asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result_right[row-1]) : "r"(magic2), "r"(magic0), "r"(magic1));
-
-            right_top_xor = right_mid_xor;
-            right_mid_xor = right_bottom_xor;
-            right_top_maj = right_mid_maj;
-            right_mid_maj = right_bottom_maj;
+            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(xor00) : "r"(BeginA2), "r"(BeginA1), "r"(BeginA0));
+            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(sum00) : "r"(BeginA2), "r"(BeginA1), "r"(BeginA0));
+            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(xor01) : "r"(BeginA4), "r"(BeginA3), "r"(left[1]));
+            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(sum01) : "r"(BeginA4), "r"(BeginA3), "r"(left[1]));
         }
 
-        // Copy results
+        // Setting up xor and sum chains, for the column 1
+        {
+            const uint32_t BeginB0 = __funnelshift_r(right[0], left[0], 1);
+            const uint32_t BeginB1 = right[0];
+            const uint32_t BeginB2 = right[0] << 1;
+            const uint32_t BeginB3 = __funnelshift_r(right[1], left[1], 1);
+            const uint32_t BeginB4 = right[1] << 1;
+
+            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(xor10) : "r"(BeginB2), "r"(BeginB1), "r"(BeginB0));
+            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(sum10) : "r"(BeginB2), "r"(BeginB1), "r"(BeginB0));
+            asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(xor11) : "r"(BeginB4), "r"(BeginB3), "r"(right[1]));
+            asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(sum11) : "r"(BeginB4), "r"(BeginB3), "r"(right[1]));
+        }
+
+        // Doing the required amount of rows of work
         #pragma unroll
-        for (int row = 0; row < WORK_PER_THREAD; row++) {
+        for (int row = 1; row <= 16; row++) {
+            // Left half
+            {
+                const uint32_t a3 = left[row] >> 1;
+                const uint32_t a4 = __funnelshift_l(right[row], left[row], 1);
+                const uint32_t a5 = left[row + 1] >> 1;
+                const uint32_t a6 = left[row + 1];
+                const uint32_t a7 = __funnelshift_l(right[row + 1], left[row + 1], 1);
+
+
+                uint32_t left_bottom_xor, left_bottom_maj;
+                asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(left_bottom_xor) : "r"(a7), "r"(a6), "r"(a5));
+                asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(left_bottom_maj) : "r"(a7), "r"(a6), "r"(a5));
+
+                uint32_t aA, y2, magic0, magic1, magic2;
+                asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(aA) : "r"(left_top_xor), "r"(a4), "r"(a3));
+                asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(y2) : "r"(left_top_xor), "r"(a4), "r"(a3));
+                asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(left_bottom_xor), "r"(aA), "r"(left[row]));
+                asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(left[row]), "r"(y2));
+                asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(left_bottom_maj), "r"(left_top_maj));
+                asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result_left[row-1]) : "r"(magic2), "r"(magic0), "r"(magic1));
+
+                left_top_xor = left_mid_xor;
+                left_mid_xor = left_bottom_xor;
+                left_top_maj = left_mid_maj;
+                left_mid_maj = left_bottom_maj;
+                result_left[row-1] = result;
+            }
+
+            // Right half
+            {
+                const uint32_t b3 = __funnelshift_r(right[row], left[row], 1);
+                const uint32_t b4 = right[row] << 1;
+                const uint32_t b5 = __funnelshift_r(right[row + 1], left[row + 1], 1);
+                const uint32_t b6 = right[row + 1];
+                const uint32_t b7 = right[row + 1] << 1;
+
+
+                uint32_t right_bottom_xor, right_bottom_maj;
+                asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(right_bottom_xor) : "r"(b7), "r"(b6), "r"(b5));
+                asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(right_bottom_maj) : "r"(b7), "r"(b6), "r"(b5));
+
+                uint32_t bB, x2;
+                asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bB) : "r"(right_top_xor), "r"(b4), "r"(b3));
+                asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(x2) : "r"(right_top_xor), "r"(b4), "r"(b3));
+                asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(right_bottom_xor), "r"(bB), "r"(right[row]));
+                asm("lop3.b32 %0, %1, %2, %3, 0b01011011;" : "=r"(magic1) : "r"(magic0), "r"(right[row]), "r"(x2));
+                asm("lop3.b32 %0, %1, %2, %3, 0b10010001;" : "=r"(magic2) : "r"(magic1), "r"(right_bottom_maj), "r"(right_top_maj));
+                asm("lop3.b32 %0, %1, %2, %3, 0b01011000;" : "=r"(result_right[row-1]) : "r"(magic2), "r"(magic0), "r"(magic1));
+
+                right_top_xor = right_mid_xor;
+                right_mid_xor = right_bottom_xor;
+                right_top_maj = right_mid_maj;
+                right_mid_maj = right_bottom_maj;
+            }
+        }
+
+        // Copy results after as loop still going, os can't overwrite values yet
+        #pragma unroll
+        for (int row = 0; row < 16; row++) {
             left[row+1] = result_left[row];
             right[row+1] = result_right[row];
         }
@@ -275,8 +282,8 @@ __global__ void step_kernel(const uint32_t *field, uint32_t *new_field, uint32_t
 
     // Write back
     #pragma unroll
-    for (int row = 0; row < WORK_PER_THREAD; row++) {
-        if (py + row >= STEP_SIZE && py + row < WORK_GROUP_SIZE * WORK_PER_THREAD - STEP_SIZE) {
+    for (int row = 0; row < 16; row++) {
+        if (py + row >= STEP_SIZE && py + row < WORK_GROUP_SIZE * 16 - STEP_SIZE) {
             permute(&new_field[i + row], left[row + 1], right[row + 1]);
         }
     }

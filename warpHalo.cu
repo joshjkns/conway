@@ -816,7 +816,7 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width, int
     // Warp identification
     int warpId = (ty >> 5) + (tx * 4);  // 16 warps per block
     int laneId = ty & 31;  // 31 is 0x1F, which is 2^5 - 1 (binary: 11111)
-    // int laneId = constrainValue(ty, 32);               // 0–31 within the warp
+    // 0–31 within the warp
 
     // Global grid position
     int globalX = (blockIdx.x * blockDim.x) + tx;
@@ -830,7 +830,6 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width, int
     totalTime += t1 - t0;
 
     int centralWarpStartY = (blockIdx.y * 256) + (256 * yQuarter);
-    //printf("startY: %d",centralWarpStartY);
     int centralWarpEndY = centralWarpStartY + 64;
 
     int haloStartY = centralWarpStartY - 32;
@@ -843,23 +842,10 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width, int
         uint64_t right = globalData[(globalY * width) + globalXright];
         warpStorage[warpId][(laneId * 8) + (i * 2)] = (left << 32) | (middle >> 32);   
         warpStorage[warpId][(laneId * 8) + (i * 2) + 1] = (middle << 32) | (right >> 32); 
-        // if ((iteration == 0) && (tx == 0) && (ty == 8) && (blockIdx.x == 0) && (blockIdx.y == 0)){
-        //     printf("\n%d %d %d %d %d %d %d %d \n",globalY,centralWarpStartY,globalX,(laneId * 8) + (i * 2),(laneId * 8) + (i * 2) + 1, (globalY * width) + globalX, height, width);
-        // }
     }
 
-    // if ((iteration == 0) && (tx == 0) && (ty == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)){
-    //     for(int i = 0; i < 256;i+=2){
-    //         printf("Line %d:   ", i);
-    //         print_binary64(warpStorage[warpId][i]);
-    //         printf("Line %d:   " ,i);
-    //         print_binary64(warpStorage[warpId][i+1]);
-    //         printf("\n");
-    //     }
-    // }
 
     __syncthreads();
-    //printf("heuhjbef");
     uint64_t r00;
     uint64_t r01;
     uint64_t r50;
@@ -951,31 +937,35 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width, int
     }
     unsigned long long int t21 = clock64();
     totalTime2 += t21 - t20;
-    if ((iteration == 0) && (tx == 0) && (ty == 0)){
-        printf("Float/Iter/Thread total time: %llu %llu %llu \n", totalTime, totalTime3,totalTime2);
-    }
 }
 
 extern "C" void gol(uint64_t *current_ptr, int width, int height, int iterations) {
     size_t size = width * height * sizeof(uint64_t);
-    printf("%d %d", width, height);
     uint64_t *d_current;
-    clock_t start = clock();
     cudaMalloc(&d_current, size);
 
     cudaMemcpy(d_current, current_ptr, size, cudaMemcpyHostToDevice);
-    clock_t end = clock();
-    double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-    printf("\nElapsed time: %f seconds\n", time_spent);
+
     dim3 blockDim(4, 128);
     dim3 gridDim(64,64);
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start);
     
     for (int iteration = 0; iteration < iterations; iteration+=32) {
         multistepKernel<<<gridDim, blockDim>>>(d_current, height, width, iteration);
         cudaDeviceSynchronize();
-        double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-        //printf("Elapsed time: %f seconds\n", time_spent);
     }
+
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+   
+    printf("Completed in %.2f ms\n", milliseconds);
     cudaMemcpy(current_ptr, d_current, size, cudaMemcpyDeviceToHost);
 
     cudaFree(d_current);
