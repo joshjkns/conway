@@ -159,6 +159,9 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 			chunkWorld := reply.Chunk
 			
 			for i := startRow; i <= endRow; i++ {
+				if b.quit {
+					return
+				}
 				for j := 0; j < args.Width; j++ {
 					world[i][j] = chunkWorld[i-startRow][j]
 					// if world[i][j] != b.currentWorld[i][j] {
