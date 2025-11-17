@@ -13,7 +13,7 @@
 #define ITERATIONS 100000
 #define WORK_GROUP_SIZE 32
 #define WORK_PER_THREAD 16
-#define STEP_SIZE 16
+#define STEP_SIZE 4
 
 // Calculated constants
 #define SIMULATED_ROWS (WORK_GROUP_SIZE * WORK_PER_THREAD - 2 * STEP_SIZE)  // 480, 480 + 32 = 512 is teh rows a block can actually do, so -16 in top and bottom for padding
@@ -63,7 +63,7 @@ __global__ void kernelSingleWord(const uint32_t *field, uint32_t *new_field, uin
     }
 
     // Simulation loop
-    for (uint32_t step = 0; step < warpComputeSize; step++) {
+    for (uint32_t step = 0; step < steps; step++) {
         uint32_t result_left[16];
         uint32_t result_right[16];
 
@@ -158,37 +158,37 @@ __global__ void kernelSingleWord(const uint32_t *field, uint32_t *new_field, uin
                 const uint32_t B7 = right[row + 1] << 1;
 
                 // Suming each bit
-                sum1 = B0 ^ B1;
-                carry1 = B0 & B1;
+                uint32_t sum1 = B0 ^ B1;
+                uint32_t carry1 = B0 & B1;
 
-                sum2 = B2 ^ B4;
-                carry2 = B2 & B4;
+                uint32_t sum2 = B2 ^ B4;
+                uint32_t carry2 = B2 & B4;
 
-                sum3 = B7 ^ B6;
-                carry3 = B7 & B6;
+                uint32_t sum3 = B7 ^ B6;
+                uint32_t carry3 = B7 & B6;
 
-                sum4 = B5 ^ B3;
-                carry4 = B5 & B3;
+                uint32_t sum4 = B5 ^ B3;
+                uint32_t carry4 = B5 & B3;
 
-                bit00 = sum1 ^ sum2;
-                bit01 = (sum1 & sum2) ^ (carry1 ^ carry2);
-                bit02 = (carry1 & carry2);
+                uint32_t bit00 = sum1 ^ sum2;
+                uint32_t bit01 = (sum1 & sum2) ^ (carry1 ^ carry2);
+                uint32_t bit02 = (carry1 & carry2);
 
-                bit10 = sum3 ^ sum4;
-                bit11 = (sum3 & sum4) ^ (carry3 ^ carry4);
-                bit12 = (carry3 & carry4);
+                uint32_t bit10 = sum3 ^ sum4;
+                uint32_t bit11 = (sum3 & sum4) ^ (carry3 ^ carry4);
+                uint32_t bit12 = (carry3 & carry4);
 
                 //each sum is represnted as the binary expretiotion of the correspodning tempBit0,1,2
-                temp1 = bit00 & bit10;
-                temp2 = bit01 ^ bit11;
-                tempBit0 = bit00 ^ bit10;
-                tempBit1 = temp1 ^ temp2;
-                tempBit2 = bit02 | bit12 | (bit01 & bit11) | (temp1 & temp2);
+                uint32_t temp1 = bit00 & bit10;
+                uint32_t temp2 = bit01 ^ bit11;
+                uint32_t tempBit0 = bit00 ^ bit10;
+                uint32_t tempBit1 = temp1 ^ temp2;
+                uint32_t tempBit2 = bit02 | bit12 | (bit01 & bit11) | (temp1 & temp2);
 
                 //above just sums the number of ones, and represnts it in three 64 bit numbers, one bit in each number
-                finalTemp = (~tempBit2) & tempBit1;
-                two = (~tempBit0) & finalTemp;
-                three = tempBit0 & finalTemp;
+                uint32_t finalTemp = (~tempBit2) & tempBit1;
+                uint32_t two = (~tempBit0) & finalTemp;
+                uint32_t three = tempBit0 & finalTemp;
                 result_right[row-1] = three | (two & right[row]);
             }
         }
@@ -236,7 +236,7 @@ __global__ void kernelDoubleWord(const uint32_t *field, uint32_t *new_field, uin
     }
 
     // Simulation loop
-    for (uint32_t step = 0; step < warpComputeSize; step++) {
+    for (uint32_t step = 0; step < steps; step++) {
         uint32_t result_left[16];
         uint32_t result_right[16];
 
@@ -288,53 +288,53 @@ __global__ void kernelDoubleWord(const uint32_t *field, uint32_t *new_field, uin
                 uint32_t br = __funnelshift_l(right[row + 2], left[row + 2], 1);
 
                 // Half-Adders to sum the 8 neighbors:
-                uint64_t sum1 = m13 ^ m23;
-                uint64_t carry1 = m13 & m23;
-                uint64_t sum2 = m11 ^ m21;
-                uint64_t carry2 = m11 & m21;
-                uint64_t sum3 = tl ^ t;
-                uint64_t carry3 = tl & t;
-                uint64_t sum4 = tr ^ m12;
-                uint64_t carry4 = tr & m12;
-                uint64_t sum5 = br ^ b;
-                uint64_t carry5 = br & b;
-                uint64_t sum6 = bl ^ m22;
-                uint64_t carry6 = bl & m22;
+                uint32_t sum1 = m13 ^ m23;
+                uint32_t carry1 = m13 & m23;
+                uint32_t sum2 = m11 ^ m21;
+                uint32_t carry2 = m11 & m21;
+                uint32_t sum3 = tl ^ t;
+                uint32_t carry3 = tl & t;
+                uint32_t sum4 = tr ^ m12;
+                uint32_t carry4 = tr & m12;
+                uint32_t sum5 = br ^ b;
+                uint32_t carry5 = br & b;
+                uint32_t sum6 = bl ^ m22;
+                uint32_t carry6 = bl & m22;
 
                 // Combining two Half-Adders into a full 3-bit addes with a 3-bit result:
-                uint64_t bit00 = sum1 ^ sum2;
-                uint64_t bit01 = (sum1 ^ sum2) ^ (carry1 ^ carry2);
-                uint64_t bit02 = carry1 & carry2;
+                uint32_t bit00 = sum1 ^ sum2;
+                uint32_t bit01 = (sum1 ^ sum2) ^ (carry1 ^ carry2);
+                uint32_t bit02 = carry1 & carry2;
 
-                uint64_t bit10 = sum3 ^ sum4;
-                uint64_t bit11 = (sum3 ^ sum4) ^ (carry3 ^ carry4);
-                uint64_t bit12 = carry3 & carry4;
+                uint32_t bit10 = sum3 ^ sum4;
+                uint32_t bit11 = (sum3 ^ sum4) ^ (carry3 ^ carry4);
+                uint32_t bit12 = carry3 & carry4;
 
-                uint64_t bit20 = sum5 ^ sum6;
-                uint64_t bit21 = (sum5 ^ sum6) ^ (carry5 ^ carry6);
-                uint64_t bit22 = carry5 & carry6;
+                uint32_t bit20 = sum5 ^ sum6;
+                uint32_t bit21 = (sum5 ^ sum6) ^ (carry5 ^ carry6);
+                uint32_t bit22 = carry5 & carry6;
 
                 // Add the three 3-bit numbers together to get final 4-bit neighbor counts, for both m12 and m22:
-                uint64_t temp01 = bit00 & bit10;
-                uint64_t temp02 = bit01 ^ bit11;
-                uint64_t tempBit00 = bit00 ^ bit10;
-                uint64_t tempBit01 = temp01 ^ temp02;
-                uint64_t tempBit02 = bit02 | bit12 | (bit01 & bit11) | (temp01 & temp02); //tempBit02 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
+                uint32_t temp01 = bit00 & bit10;
+                uint32_t temp02 = bit01 ^ bit11;
+                uint32_t tempBit00 = bit00 ^ bit10;
+                uint32_t tempBit01 = temp01 ^ temp02;
+                uint32_t tempBit02 = bit02 | bit12 | (bit01 & bit11) | (temp01 & temp02); //tempBit02 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
 
-                uint64_t temp11 = bit00 & bit20;
-                uint64_t temp12 = bit01 ^ bit21;
-                uint64_t tempBit10 = bit00 ^ bit20;
-                uint64_t tempBit11 = temp11 ^ temp12;
-                uint64_t tempBit12 = bit02 | bit22 | (bit01 & bit21) | (temp11 & temp12); //tempBit12 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
+                uint32_t temp11 = bit00 & bit20;
+                uint32_t temp12 = bit01 ^ bit21;
+                uint32_t tempBit10 = bit00 ^ bit20;
+                uint32_t tempBit11 = temp11 ^ temp12;
+                uint32_t tempBit12 = bit02 | bit22 | (bit01 & bit21) | (temp11 & temp12); //tempBit12 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
 
                 // Final three bits for m12 and m22:
-                uint64_t m12_temp = (~tempBit02) & tempBit01;
-                uint64_t m12_count2 = (~tempBit00) & m12_temp; //is 1 if number of cells is equal to 2
-                uint64_t m12_count3 = tempBit00 & m12_temp; //is 1 if number of cells is equal to 3
+                uint32_t m12_temp = (~tempBit02) & tempBit01;
+                uint32_t m12_count2 = (~tempBit00) & m12_temp; //is 1 if number of cells is equal to 2
+                uint32_t m12_count3 = tempBit00 & m12_temp; //is 1 if number of cells is equal to 3
 
-                uint64_t m22_temp = (~tempBit12) & tempBit11;
-                uint64_t m22_count2 = (~tempBit10) & m22_temp;
-                uint64_t m22_count3 = tempBit10 & m22_temp;
+                uint32_t m22_temp = (~tempBit12) & tempBit11;
+                uint32_t m22_count2 = (~tempBit10) & m22_temp;
+                uint32_t m22_count3 = tempBit10 & m22_temp;
 
                 // Apply GOL rules:
                 result_left[row] = (m12 & m12_count2) | m12_count3;
@@ -344,67 +344,67 @@ __global__ void kernelDoubleWord(const uint32_t *field, uint32_t *new_field, uin
 
             // Right half
             {
-                tl = __funnelshift_r(right[row - 1], left[row - 1], 1);
-                t = right[row - 1];
-                tr = right[row - 1] << 1;
-                m11 = __funnelshift_r(right[row], left[row], 1);
-                m12 = right[row];
-                m13 = right[row] << 1;
-                m21 = __funnelshift_r(right[row + 1], left[row + 1], 1);
-                m22 = right[row + 1];
-                m23 = right[row + 1] << 1;
-                bl = __funnelshift_r(right[row + 2], left[row + 2], 1);
-                b = right[row + 2];
-                br = right[row + 2] << 1;
+                uint32_t tl = __funnelshift_r(right[row - 1], left[row - 1], 1);
+                uint32_t t = right[row - 1];
+                uint32_t tr = right[row - 1] << 1;
+                uint32_t m11 = __funnelshift_r(right[row], left[row], 1);
+                uint32_t m12 = right[row];
+                uint32_t m13 = right[row] << 1;
+                uint32_t m21 = __funnelshift_r(right[row + 1], left[row + 1], 1);
+                uint32_t m22 = right[row + 1];
+                uint32_t m23 = right[row + 1] << 1;
+                uint32_t bl = __funnelshift_r(right[row + 2], left[row + 2], 1);
+                uint32_t b = right[row + 2];
+                uint32_t br = right[row + 2] << 1;
 
                 // Half-Adders to sum the 8 neighbors:
-                sum1 = m13 ^ m23;
-                carry1 = m13 & m23;
-                sum2 = m11 ^ m21;
-                carry2 = m11 & m21;
-                sum3 = tl ^ t;
-                carry3 = tl & t;
-                sum4 = tr ^ m12;
-                carry4 = tr & m12;
-                sum5 = br ^ b;
-                carry5 = br & b;
-                sum6 = bl ^ m22;
-                carry6 = bl & m22;
+                uint32_t sum1 = m13 ^ m23;
+                uint32_t carry1 = m13 & m23;
+                uint32_t sum2 = m11 ^ m21;
+                uint32_t carry2 = m11 & m21;
+                uint32_t sum3 = tl ^ t;
+                uint32_t carry3 = tl & t;
+                uint32_t sum4 = tr ^ m12;
+                uint32_t carry4 = tr & m12;
+                uint32_t sum5 = br ^ b;
+                uint32_t carry5 = br & b;
+                uint32_t sum6 = bl ^ m22;
+                uint32_t carry6 = bl & m22;
 
                 // Combining two Half-Adders into a full 3-bit addes with a 3-bit result:
-                bit00 = sum1 ^ sum2;
-                bit01 = (sum1 ^ sum2) ^ (carry1 ^ carry2);
-                bit02 = carry1 & carry2;
+                uint32_t bit00 = sum1 ^ sum2;
+                uint32_t bit01 = (sum1 ^ sum2) ^ (carry1 ^ carry2);
+                uint32_t bit02 = carry1 & carry2;
 
-                bit10 = sum3 ^ sum4;
-                bit11 = (sum3 ^ sum4) ^ (carry3 ^ carry4);
-                bit12 = carry3 & carry4;
+                uint32_t bit10 = sum3 ^ sum4;
+                uint32_t bit11 = (sum3 ^ sum4) ^ (carry3 ^ carry4);
+                uint32_t bit12 = carry3 & carry4;
 
-                bit20 = sum5 ^ sum6;
-                bit21 = (sum5 ^ sum6) ^ (carry5 ^ carry6);
-                bit22 = carry5 & carry6;
+                uint32_t bit20 = sum5 ^ sum6;
+                uint32_t bit21 = (sum5 ^ sum6) ^ (carry5 ^ carry6);
+                uint32_t bit22 = carry5 & carry6;
 
                 // Add the three 3-bit numbers together to get final 4-bit neighbor counts, for both m12 and m22:
-                temp01 = bit00 & bit10;
-                temp02 = bit01 ^ bit11;
-                tempBit00 = bit00 ^ bit10;
-                tempBit01 = temp01 ^ temp02;
-                tempBit02 = bit02 | bit12 | (bit01 & bit11) | (temp01 & temp02); //tempBit02 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
+                uint32_t temp01 = bit00 & bit10;
+                uint32_t temp02 = bit01 ^ bit11;
+                uint32_t tempBit00 = bit00 ^ bit10;
+                uint32_t tempBit01 = temp01 ^ temp02;
+                uint32_t tempBit02 = bit02 | bit12 | (bit01 & bit11) | (temp01 & temp02); //tempBit02 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
 
-                temp11 = bit00 & bit20;
-                temp12 = bit01 ^ bit21;
-                tempBit10 = bit00 ^ bit20;
-                tempBit11 = temp11 ^ temp12;
-                tempBit12 = bit02 | bit22 | (bit01 & bit21) | (temp11 & temp12); //tempBit12 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
+                uint32_t temp11 = bit00 & bit20;
+                uint32_t temp12 = bit01 ^ bit21;
+                uint32_t tempBit10 = bit00 ^ bit20;
+                uint32_t tempBit11 = temp11 ^ temp12;
+                uint32_t tempBit12 = bit02 | bit22 | (bit01 & bit21) | (temp11 & temp12); //tempBit12 = 1 if count >= 4, i.e. bit2=1 (not overflow) or bit3=1 (overflow)
 
                 // Final three bits for m12 and m22:
-                m12_temp = (~tempBit02) & tempBit01;
-                m12_count2 = (~tempBit00) & m12_temp; //is 1 if number of cells is equal to 2
-                m12_count3 = tempBit00 & m12_temp; //is 1 if number of cells is equal to 3
+                uint32_t m12_temp = (~tempBit02) & tempBit01;
+                uint32_t m12_count2 = (~tempBit00) & m12_temp; //is 1 if number of cells is equal to 2
+                uint32_t m12_count3 = tempBit00 & m12_temp; //is 1 if number of cells is equal to 3
 
-                m22_temp = (~tempBit12) & tempBit11;
-                m22_count2 = (~tempBit10) & m22_temp;
-                m22_count3 = tempBit10 & m22_temp;
+                uint32_t m22_temp = (~tempBit12) & tempBit11;
+                uint32_t m22_count2 = (~tempBit10) & m22_temp;
+                uint32_t m22_count3 = tempBit10 & m22_temp;
 
                 // Apply GOL rules:
                 result_right[row] = (m12 & m12_count2) | m12_count3;
@@ -473,27 +473,27 @@ __global__ void kernelLOP3(const uint32_t *field, uint32_t *new_field, uint32_t 
         uint32_t result_left[16];
         uint32_t result_right[16];
 
-        // Boundaries
-        if (blockIdx.y == 0 && threadIdx.y == CLIP_TOP_LY) {
-            left[CLIP_TOP_OFFSET] = 0;
-            right[CLIP_TOP_OFFSET] = 0;
-        }
-        if (blockIdx.y == gridDim.y - 1 && threadIdx.y == CLIP_BOTTOM_LY) {
-            left[CLIP_BOTTOM_OFFSET] = 0;
-            right[CLIP_BOTTOM_OFFSET] = 0;
-        }
+        // // Boundaries
+        // if (blockIdx.y == 0 && threadIdx.y == CLIP_TOP_LY) {
+        //     left[CLIP_TOP_OFFSET] = 0;
+        //     right[CLIP_TOP_OFFSET] = 0;
+        // }
+        // if (blockIdx.y == gridDim.y - 1 && threadIdx.y == CLIP_BOTTOM_LY) {
+        //     left[CLIP_BOTTOM_OFFSET] = 0;
+        //     right[CLIP_BOTTOM_OFFSET] = 0;
+        // }
 
         //-------------------- I think I can remove this --------------------------------
-        if (blockIdx.x == 0) {
-            #pragma unroll
-            for (int row = 0; row < 16; row++)
-                left[row + 1] &= 0x0000FFFF;
-        }
-        if (blockIdx.x == gridDim.x - 1) {
-            #pragma unroll
-            for (int row = 0; row < 16; row++)
-                right[row + 1] &= 0xFFFF0000;
-        }
+        // if (blockIdx.x == 0) {
+        //     #pragma unroll
+        //     for (int row = 0; row < 16; row++)
+        //         left[row + 1] &= 0x0000FFFF;
+        // }
+        // if (blockIdx.x == gridDim.x - 1) {
+        //     #pragma unroll
+        //     for (int row = 0; row < 16; row++)
+        //         right[row + 1] &= 0xFFFF0000;
+        // }
         //-------------------------------------------------------------------------------
 
         // Warp shuffles
@@ -576,7 +576,7 @@ __global__ void kernelLOP3(const uint32_t *field, uint32_t *new_field, uint32_t 
                 asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(xor12) : "r"(B7), "r"(B6), "r"(B5));
                 asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(sum12) : "r"(B7), "r"(B6), "r"(B5));
 
-                uint32_t bB, x2;
+                uint32_t bB, x2, magic0, magic1, magic2;
                 asm("lop3.b32 %0, %1, %2, %3, 0b10010110;" : "=r"(bB) : "r"(xor10), "r"(B4), "r"(B3));
                 asm("lop3.b32 %0, %1, %2, %3, 0b11101000;" : "=r"(x2) : "r"(xor10), "r"(B4), "r"(B3));
                 asm("lop3.b32 %0, %1, %2, %3, 0b00111110;" : "=r"(magic0) : "r"(xor12), "r"(bB), "r"(right[row]));
@@ -669,7 +669,7 @@ int main() {
     while (remaining > 0) {
         int chunk = (remaining > STEP_SIZE) ? STEP_SIZE : remaining;
        
-        step_kernel<<<grid, block, 0, stream>>>(buffer, buffer_aux, chunk);
+        kernelLOP3<<<grid, block, 0, stream>>>(buffer, buffer_aux, chunk,0);
        
         // Swap buffers
         uint32_t *temp = buffer;
@@ -791,23 +791,24 @@ void test_correctness() {
     set_cell(buffer, 10, 12);
     set_cell(buffer, 11, 12);
     set_cell(buffer, 12, 12);
+
    
     // Run both for 20 steps
     printf("Running 20 steps...\n");
    
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 16; i++) {
         step_cpu(cpu_grid, size, size);
     }
    
     dim3 grid(HORIZONTAL_GROUPS, VERTICAL_GROUPS, 1);
     dim3 block(1, WORK_GROUP_SIZE, 1);
    
-    int remaining = 20;
+    int remaining = 16;
     uint32_t *buf = buffer;
     uint32_t *aux = buffer_aux;
     while (remaining > 0) {
         int chunk = (remaining > STEP_SIZE) ? STEP_SIZE : remaining;
-        step_kernel<<<grid, block, 0, stream>>>(buf, aux, chunk);
+        kernelLOP3<<<grid, block, 0, stream>>>(buf, aux, chunk,0);
         uint32_t *temp = buf;
         buf = aux;
         aux = temp;

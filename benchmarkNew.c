@@ -6,7 +6,7 @@
 #include <omp.h>
 #include <inttypes.h>
 
-const int ITERATIONS = 32;
+const int ITERATIONS = 100000;
 const int WIDTH = 16384;
 const int HEIGHT = 16384;
 
@@ -27,7 +27,7 @@ void init_grid_bitpacked(uint64_t *grid, int width, int height, float density) {
         for (int x = 0; x < xElements; x++) {
             uint64_t word = 0;
             for (int bit = 0; bit < 64; bit++) {
-                if ((x == 0) && (y == 2) && ((bit == 30) || (bit == 31) || (bit ==32))){
+                if ((x == 0) && (y == 1) && ((bit == 30) || (bit == 31) || (bit ==32))){
                     word |= (1ULL << bit);
                 }
                 // if ((float)rand() / RAND_MAX < density) {
