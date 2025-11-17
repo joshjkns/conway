@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const benchLength = 1000
+const benchLength = 100
 
 func BenchmarkGol(b *testing.B) {
     // tests := []gol.Params{
@@ -15,11 +15,12 @@ func BenchmarkGol(b *testing.B) {
 	// 	{ImageWidth: 64, ImageHeight: 64},
 	// 	{ImageWidth: 512, ImageHeight: 512},
 	// }
-    for t:= 1; t <= 16; t++ {
+    threads := []int{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}
+    for _, thread := range threads{
         os.Stdout = nil // Disable all program output apart from benchmark results
         p := gol.Params{
             Turns:       benchLength,
-            Threads:     t,
+            Threads:     thread,
             ImageWidth:  512,
             ImageHeight: 512,
         }

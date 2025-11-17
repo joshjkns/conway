@@ -81,7 +81,8 @@ func distributor(p Params, c distributorChannels) {
 
 	// args
 	ipPort := "localhost:8029"
-	brokerIP := "3.91.63.178:8035"
+	brokerIP := "44.222.63.146:8035"
+	// brokerIP := "localhost:8035"
 
 	// listen on port
 	listener, err := net.Listen("tcp", ipPort)
