@@ -98,7 +98,7 @@ func distributor(p Params, c distributorChannels) {
 	channels = c
 
 	// dial the broker
-	broker, err := rpc.Dial("tcp", "localhost:8029")
+	broker, err := rpc.Dial("tcp", "localhost:8035")
 	if err != nil {
 		panic(err)
 	}
@@ -141,10 +141,10 @@ func distributor(p Params, c distributorChannels) {
 	for {
 		select {
 		case <- ticker.C:
-			var tickerReply AliveCellsCount
+			var tickerReply stubs.WorldInfo
 			if !paused {
-				broker.Call("Broker.TickerReply", true, &tickerReply)
-				c.events <- tickerReply
+				broker.Call("Broker.Consolidate", true, &tickerReply)
+				c.events <- AliveCellsCount{CompletedTurns: tickerReply.CurrentTurns, CellsCount: len(stubs.GetAliveCells(&tickerReply.World))}
 			}
 		case kp := <- c.keyPresses:
 			switch kp {
