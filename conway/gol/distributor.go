@@ -4,7 +4,6 @@ import (
 	"csa/conway/util"
 	"csa/stubs"
 	"fmt"
-	"net"
 	"net/rpc"
 	"strconv"
 	"time"
@@ -80,19 +79,19 @@ func distributor(p Params, c distributorChannels) {
 	<-c.ioIdle
 
 	// args
-	ipPort := "localhost:8029"
-	brokerIP := "3.93.75.158:8035"
+	// ipPort := "localhost:8029"
+	brokerIP := "98.81.29.136:8035"
 	// brokerIP := "localhost:8035"
 
-	// listen on port
-	listener, err := net.Listen("tcp", ipPort)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("[Distributor] - Listening on port ", ipPort)
-	defer listener.Close()
+	// // listen on port
+	// listener, err := net.Listen("tcp", ipPort)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// fmt.Println("[Distributor] - Listening on port ", ipPort)
+	// defer listener.Close()
 	
-	go rpc.Accept(listener)
+	// go rpc.Accept(listener)
 
 	// making new Distributor
 	d := &Distributor{}
