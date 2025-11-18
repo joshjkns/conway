@@ -12,7 +12,7 @@ import (
 type Worker struct{
 	id int
 	broker *rpc.Client
-	chunk [][]byte
+	chunk [][]bool
 	width int
 	height int
 	startRow int
@@ -23,7 +23,7 @@ type Worker struct{
 
 var offsets = [][]int{{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}}
 
-func countLiveNeighbours(world *[][]byte, x, y, width, height int) int {
+func countLiveNeighbours(world *[][]bool, x, y, width, height int) int {
 	count := 0
 
 	for _, offset := range offsets {
@@ -31,29 +31,29 @@ func countLiveNeighbours(world *[][]byte, x, y, width, height int) int {
 		yNeighbour := y + offset[1]
 		xNeighbour = stubs.ConstrainValue(xNeighbour, width)
 		yNeighbour = stubs.ConstrainValue(yNeighbour, height)
-		if (*world)[yNeighbour][xNeighbour] == 255 { // alive
+		if (*world)[yNeighbour][xNeighbour] { // alive
 			count += 1
 		}
 	}
 	return count
 }
 
-func increment(chunk *[][]byte, width, height int) [][]byte {
+func increment(chunk *[][]bool, width, height int) [][]bool {
 	newWorld := stubs.CreateWorld(width, height) // actual part we are updating
 	for y := 1; y < len(*chunk)-1; y++ { // only checks actual part
 		for x := 0; x < width; x++ {
 			liveNeighbours := countLiveNeighbours(chunk, x, y, width, len(*chunk))
-			if (*chunk)[y][x] == 255 { // current cell is alive
+			if (*chunk)[y][x] { // current cell is alive
 				if liveNeighbours < 2 || liveNeighbours > 3 {
-					newWorld[y-1][x] = 0
+					newWorld[y-1][x] = false
 				} else {
-					newWorld[y-1][x] = 255
+					newWorld[y-1][x] = true
 				}
 			} else { // current cell is dead
 				if liveNeighbours == 3 {
-					newWorld[y-1][x] = 255
+					newWorld[y-1][x] = true
 				} else {
-					newWorld[y-1][x] = 0
+					newWorld[y-1][x] = false
 				}
 			}
 		}
@@ -62,7 +62,7 @@ func increment(chunk *[][]byte, width, height int) [][]byte {
 }
 
 
-func addHalo(chunk [][]byte, width, height int, pos stubs.Position, address string, id int) [][]byte {
+func addHalo(chunk [][]bool, width, height int, pos stubs.Position, address string, id int) [][]bool {
 	neighbour, err := rpc.Dial("tcp", address)
 	if err != nil {
 			panic(err)
@@ -99,10 +99,10 @@ func (w *Worker) SendHalo(pos stubs.Position, reply *stubs.Halo) error {
 	defer w.mu.RUnlock()
 
 	if pos == stubs.Top {
-		reply.Row = make([]byte, len(w.chunk[0]))
+		reply.Row = make([]bool, len(w.chunk[0]))
 		copy(reply.Row, w.chunk[len(w.chunk)-1])
 	} else {
-		reply.Row = make([]byte, len(w.chunk[0]))
+		reply.Row = make([]bool, len(w.chunk[0]))
 		copy(reply.Row, w.chunk[0])
 	}
 	return nil

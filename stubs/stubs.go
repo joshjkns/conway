@@ -19,7 +19,7 @@ type WaitArgs struct {
 }
 
 type Halo struct {
-	Row []byte
+	Row []bool
 }
 
 type Data struct {
@@ -40,7 +40,7 @@ type Response struct {
 }
 
 type WorldInfo struct {
-	World [][]byte
+	World [][]bool
 	Width int
 	Height int
 	Turns int
@@ -53,26 +53,26 @@ type NeighbourPair struct {
 }
 
 type ChunkInfo struct {
-	Chunk [][]byte
+	Chunk [][]bool
 	StartRow int
 	EndRow int
 	Neighbours NeighbourPair
 	Turns int
 }
 
-func CreateWorld(w int, h int) [][]byte {
-	newWorld := make([][]byte, h)
+func CreateWorld(w int, h int) [][]bool {
+	newWorld := make([][]bool, h)
 	for i := range newWorld {
-		newWorld[i] = make([]byte, w)
+		newWorld[i] = make([]bool, w)
 	}
 	return newWorld
 }
 
-func GetAliveCells(world *[][]byte) []util.Cell {
+func GetAliveCells(world *[][]bool) []util.Cell {
 	var alive []util.Cell
 	for y := 0; y < len(*world); y++ {
 		for x := 0; x < (len((*world)[0])); x++ {
-			if (*world)[y][x] == 255 {
+			if (*world)[y][x] {
 				cell := util.Cell{X: x, Y: y}
 				alive = append(alive, cell)
 			}
@@ -81,7 +81,7 @@ func GetAliveCells(world *[][]byte) []util.Cell {
 	return alive
 }
 
-func CopyWorld(world *[][]byte, w, h int) [][]byte {
+func CopyWorld(world *[][]bool, w, h int) [][]bool {
 	newWorld := CreateWorld(w,h)
 	for y := 0; y < h; y++ {
 			for x := 0; x < w; x++ {
@@ -100,7 +100,7 @@ func ConstrainValue(value int, constraint int) int {
 	return value
 }
 
-func CreateChunk(world [][]byte, width, height, startY, endY int) [][]byte {
+func CreateChunk(world [][]bool, width, height, startY, endY int) [][]bool {
 	res := CreateWorld(width, height)
 
 	for y := startY; y <= endY; y++ {

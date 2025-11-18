@@ -21,25 +21,32 @@ type distributorChannels struct {
 	keyPresses <-chan rune
 }
 
-func initialRead(world* [][]byte, flipped* []util.Cell, c distributorChannels, w, h int) {
+func initialRead(world* [][]bool, flipped* []util.Cell, c distributorChannels, w, h int) {
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
-			(*world)[y][x] = <-c.ioInput
-			if (*world)[y][x] == 255 {
+			c := <-c.ioInput
+			if c == 255 {
+				(*world)[y][x] = true
 				*flipped = append(*flipped, util.Cell{X: x, Y: y})
+			} else {
+				(*world)[y][x] = false
 			}
 		}
 	}
 }
 
-func pgmImage(p *Params, world *[][]byte, c *distributorChannels, turns *int) {
+func pgmImage(p *Params, world *[][]bool, c *distributorChannels, turns *int) {
 	(*c).ioCommand <- ioOutput
 	filename := strconv.Itoa((*p).ImageWidth) + "x" + strconv.Itoa((*p).ImageHeight) + "x" + strconv.Itoa(*turns)
 	(*c).ioFilename <- filename
 
 	for y := 0; y < (*p).ImageHeight; y++ {
 		for x := 0; x < (*p).ImageWidth; x++ {
-			(*c).ioOutput <- (*world)[y][x]
+			if (*world)[y][x] {
+				(*c).ioOutput <- 255
+			} else {
+				(*c).ioOutput <- 0
+			}
 		}
 	}
 
@@ -65,7 +72,7 @@ func distributor(p Params, c distributorChannels) {
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
 
-	brokerIP := "44.222.63.146:8035"
+	brokerIP := "localhost:8035"
 	flag.Parse()
 
 	// dial the broker

@@ -13,7 +13,7 @@ import (
 type Broker struct{
 	workers map[stubs.Data]*rpc.Client
 	currentID	int
-	currentWorld [][]byte
+	currentWorld [][]bool
 	currentTurns int
 	mu      sync.Mutex
   cond    *sync.Cond
@@ -134,7 +134,7 @@ func (b *Broker) WaitForEveryone(args stubs.WaitArgs, reply *stubs.Response) (er
 	b.currentTurns = args.Turn
 	for y := 0; y < len(args.Chunk.Chunk); y++ {
 		for j := 0; j < args.Width; j++ {
-			if args.Chunk.Chunk[y][j] == 255 {
+			if args.Chunk.Chunk[y][j] {
 				b.aliveCells += 1
 			}
 		}
