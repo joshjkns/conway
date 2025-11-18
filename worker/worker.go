@@ -12,7 +12,7 @@ import (
 type Worker struct{
 	id int
 	broker *rpc.Client
-	chunk [][]byte
+	chunk [][]bool
 	width int
 	height int
 	startRow int
@@ -23,7 +23,7 @@ type Worker struct{
 
 var offsets = [][]int{{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}}
 
-func countLiveNeighbours(world *[][]byte, x, y, width, height int) int {
+func countLiveNeighbours(world *[][]bool, x, y, width, height int) int {
 	count := 0
 
 	for _, offset := range offsets {
@@ -31,28 +31,28 @@ func countLiveNeighbours(world *[][]byte, x, y, width, height int) int {
 		yNeighbour := y + offset[1]
 		xNeighbour = stubs.ConstrainValue(xNeighbour, width)
 		yNeighbour = stubs.ConstrainValue(yNeighbour, height)
-		if (*world)[yNeighbour][xNeighbour] == 255 { // alive
+		if (*world)[yNeighbour][xNeighbour] { // alive
 			count += 1
 		}
 	}
 	return count
 }
 
-func increment(chunk, result *[][]byte, width, height, startRow, endRow int) {
+func increment(chunk, result *[][]bool, width, height, startRow, endRow int) {
 	for y := startRow; y <= endRow; y++ { // only checks actual part
 		for x := 0; x < width; x++ {
 			liveNeighbours := countLiveNeighbours(chunk, x, y, width, len(*chunk))
-			if (*chunk)[y][x] == 255 { // current cell is alive
+			if (*chunk)[y][x] { // current cell is alive
 				if liveNeighbours < 2 || liveNeighbours > 3 {
-					(*result)[y-1][x] = 0
+					(*result)[y-1][x] = false
 				} else {
-					(*result)[y-1][x] = 255
+					(*result)[y-1][x] = true
 				}
 			} else { // current cell is dead
 				if liveNeighbours == 3 {
-					(*result)[y-1][x] = 255
+					(*result)[y-1][x] = true
 				} else {
-					(*result)[y-1][x] = 0
+					(*result)[y-1][x] = false
 				}
 			}
 		}
@@ -64,7 +64,7 @@ func (w *Worker) Quit(args bool, reply *stubs.Response) (err error) {
 	return nil
 }
 
-func worker(current, result *[][]byte, width, height int, jobs <-chan stubs.Pair, wg *sync.WaitGroup) {
+func worker(current, result *[][]bool, width, height int, jobs <-chan stubs.Pair, wg *sync.WaitGroup) {
 	for j := range jobs {
 			increment(current, result, width, height, j.StartRow, j.EndRow)
 			wg.Done()

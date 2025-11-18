@@ -12,7 +12,7 @@ import (
 type Broker struct{
 	workers map[stubs.Data]*rpc.Client
 	currentID	int
-	currentWorld [][]byte
+	currentWorld [][]bool
 	currentTurns int
 	mu      sync.Mutex
   cond    *sync.Cond
