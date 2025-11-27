@@ -802,7 +802,7 @@ __device__ __forceinline__ Result8 oneStepReduceSquareSingleWord(uint64_t r00, u
 
 __global__ void multistepKernel(uint64_t* globalData, int height, int width, int iteration) {
     // x and y positions in 4 x 128 thread grid (4 columns, 128 rows)
-    int tx = threadIdx.x; 
+    int tx = threadIdx.z; 
     int ty = threadIdx.y;
 
     // Shared memory for a thread block (translates to a thread grid), storing 6 columns (4 columns + 2*1 halo) of 320 rows (256 + 2*32 halo)
@@ -834,7 +834,7 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width, int
     int haloStartY = centralWarpStartY - 32;
     int haloEndY = centralWarpEndY + 32;
 
-    // how far down the 256 rows of the grid this warp is processing
+    // how far down the 256 rows of the grid this warp is processing, which row does it start on?
     int warpDepth = (ty >> 32) * 64;
 
     //could this not just be warpStorageHeight * tx, warpStorageHeight * (tx + 1), warpStorageHeight * (tx + 2)?
@@ -935,12 +935,15 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width, int
             warpStorage[rightCol + 256 + 32 + laneId] = right;
         }
     }
-
+    // Wait for all warps to finish loading their data into shared memory
     __syncthreads();
+    // Setup 2 column, 6 row window to do GOL calculation on
     uint64_t r00;
     uint64_t r01;
     uint64_t r50;
     uint64_t r51;
+    // To ensure that aray indexing doesn't go out of range when accessing halo rows, we set the first and last rows to 0, dont worry about wrap around, as those are already classed as 'dirty' values
+    // Also do 3 column to 2 column collapsing here
     if (laneId == 0){
         r00 = 0ULL;
         r01 = 0ULL;
@@ -956,6 +959,7 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width, int
         r50 = (warpStorage[leftCol + warpDepth + (laneId * 4) + 4] << 32) | (warpStorage[middleCol + warpDepth + (laneId * 4) + 4] >> 32);
         r51 = (warpStorage[middleCol + warpDepth + (laneId * 4) + 4] << 32) | (warpStorage[rightCol + warpDepth + (laneId * 4) + 4] >> 32);
     }
+    // Assign the middle 4 rows based off position in grid block, using warpStorage (shared memory)
     uint64_t r10 = (warpStorage[leftCol + warpDepth + (laneId * 4)] << 32) | (warpStorage[middleCol + warpDepth + (laneId * 4)] >> 32);
     uint64_t r11 = (warpStorage[middleCol + warpDepth + (laneId * 4)] << 32) | (warpStorage[rightCol + warpDepth + (laneId * 4)] >> 32);
     uint64_t r20 = (warpStorage[leftCol + warpDepth + (laneId * 4) + 1] << 32) | (warpStorage[middleCol + warpDepth + (laneId * 4) + 1] >> 32);
@@ -967,8 +971,10 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width, int
 
     #pragma unroll
     for (int i = 0; i < 32; i++){
+        //Calculate 1 iteration of GOL on that 2 column, 6 row tile
         Result8 r = oneStepReduceSquareLOP3v2(r00,r01,r10,r11,r20,r21,r30,r31,r40,r41,r50,r51);
 
+        // We can re-use these calculated 4 central rows as we know they are clean, the left and right edges are dirty, but we have a 32 bit buffer for those
         r10 = r.store[0][0];
         r11 = r.store[0][1];
         r20 = r.store[1][0];
@@ -978,9 +984,7 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width, int
         r40 = r.store[3][0];
         r41 = r.store[3][1];
 
-        // warpshiftStuff
-        // unsigned long long int t0 = clock64();
-        // Split into 32-bit parts
+        // Split second to top and second to bottom rows into 32 bits so can transfer data via warp shuffle (only 32 bits at a time), as we can guarantee they are clean
         uint32_t r10_lo = (uint32_t)(r10 & 0xFFFFFFFF);
         uint32_t r10_hi = (uint32_t)(r10 >> 32);
         uint32_t r11_lo = (uint32_t)(r11 & 0xFFFFFFFF);
@@ -1001,12 +1005,14 @@ __global__ void multistepKernel(uint64_t* globalData, int height, int width, int
         uint32_t recv_r00_hi = __shfl_down_sync(0xffffffff, r40_hi, 1);
         uint32_t recv_r01_lo = __shfl_down_sync(0xffffffff, r41_lo, 1);
         uint32_t recv_r01_hi = __shfl_down_sync(0xffffffff, r41_hi, 1);
-        // Reconstruct received values
+
+        // Reconstruct received values and put into halo rows on top and bottom
         r00 = ((uint64_t)recv_r00_hi << 32) | recv_r00_lo;
         r01 = ((uint64_t)recv_r01_hi << 32) | recv_r01_lo;
         r50 = ((uint64_t)recv_r50_hi << 32) | recv_r50_lo;
         r51 = ((uint64_t)recv_r51_hi << 32) | recv_r51_lo;
     }
+    // After 32 iterations, write back the 4 clean rows, from the thraeds that were calculating the central, not halo cells
     if ((laneId >= 8) && (laneId < 24)){
         uint64_t row1Final = r10 << 32 | r11 >> 32;
         uint64_t row2Final = r20 << 32 | r21 >> 32;
@@ -1024,10 +1030,9 @@ extern "C" void gol(uint64_t *current_ptr, int width, int height, int iterations
     size_t size = width * height * sizeof(uint64_t);
     uint64_t *d_current;
     cudaMalloc(&d_current, size);
-
     cudaMemcpy(d_current, current_ptr, size, cudaMemcpyHostToDevice);
 
-    dim3 blockDim(4, 128);
+    dim3 blockDim(1, 128, 4);
     dim3 gridDim(64,64);
 
     cudaEvent_t start, stop;
