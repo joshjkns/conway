@@ -1,6 +1,7 @@
 package main
 
 import (
+	"csa/conway/util"
 	"csa/stubs"
 	"flag"
 	"fmt"
@@ -150,7 +151,7 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 		}
 
 		// put all chunks back together
-		// var flipped []util.Cell
+		var flipped []util.Cell
 
 		for data := range b.workers {
 			reply := replyArray[data.ID]
@@ -164,20 +165,20 @@ func (b *Broker) GameOfLife(args, reply *stubs.WorldInfo) (err error) {
 				}
 				for j := 0; j < args.Width; j++ {
 					world[i][j] = chunkWorld[i-startRow][j]
-					// if world[i][j] != b.currentWorld[i][j] {
-					// 	flipped = append(flipped, util.Cell{X:j, Y:i})
-					// }
+					if world[i][j] != b.currentWorld[i][j] {
+						flipped = append(flipped, util.Cell{X:j, Y:i})
+					}
 					b.currentWorld[i][j] = world[i][j]
 				}
 			}
 		}
-		// var cellsFlippedData stubs.CellsFlippedData
-		// cellsFlippedData.CellsFlipped = flipped
-		// cellsFlippedData.CompletedTurns = b.currentTurns
-		// var flipResponse stubs.Response
-		// if !b.disconnect {
-		// 		b.distributor.Call("Distributor.Flip", cellsFlippedData, &flipResponse)
-		// }
+		var cellsFlippedData stubs.CellsFlippedData
+		cellsFlippedData.CellsFlipped = flipped
+		cellsFlippedData.CompletedTurns = b.currentTurns
+		var flipResponse stubs.Response
+		if !b.disconnect {
+				b.distributor.Call("Distributor.Flip", cellsFlippedData, &flipResponse)
+		}
 		b.currentTurns += 1
 	}
 	
@@ -194,20 +195,14 @@ func main() {
 	b.cond = sync.NewCond(&b.mu)
 	b.pausedCond = sync.NewCond(&b.pausedMu)
 
-	// due to firewall issue
-	// b.workers[stubs.Data{ID: 1, Address: "34.237.53.207:8031"}], err = rpc.Dial("tcp", "34.237.53.207:8031")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// b.workers[stubs.Data{ID: 3, Address: "3.236.240.172:8032"}], _ = rpc.Dial("tcp", "3.236.240.172:8032")
-	// b.workers[stubs.Data{ID: 4, Address: "35.174.61.28:8033"}], _ = rpc.Dial("tcp", "35.174.61.28:8033")
-	rpc.Register(b)
-
 	// args
 	port := flag.String("port", "localhost:8035", "(PRIVATE) Port to listen on")
 	// distributorIP := flag.String("distributor", "localhost:8029", "Distributor's IP")
+	// b.distributor, _ = rpc.Dial("tcp", *distributorIP)
 
 	flag.Parse()
+
+	rpc.Register(b)
 
 	// listen
 	listener, err := net.Listen("tcp", *port)
